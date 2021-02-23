@@ -11,6 +11,114 @@ output:
 ```{r setup, include=FALSE}
 library(flexdashboard)
 library(tidyverse)
+library(rio)
+library(here)
+library(janitor)
+```
+
+
+```{r, include = F}
+frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report.csv")) %>% 
+  clean_names() %>% 
+  mutate(kk_12_percent_frl = as.numeric(kk_12_percent_frl), 
+         kk_12_percent_frl = replace_na(kk_12_percent_frl, 0)) %>% 
+  separate(col = school_id_school_name, 
+           into = c('school_id','school_name'), 
+           sep = " - ",
+           extra = "merge") %>% 
+  filter(system_name != 'N/A')
+
+race_gen <- import(here("Data", "FTE Enrollment by Race_Ethnicity and Gender Fiscal Year2019-1 Data Report.csv")) %>% 
+  clean_names() %>% 
+  filter(!is.na(system_id) & 
+           gender == 'Total' &
+           system_name != 'N/A') %>% 
+  select(-gender) %>% 
+  separate(col = school_id, 
+           into = c('school_id','school_name'), 
+           sep = "-",
+           extra = "merge") %>% 
+  mutate(ethnic_hispanic = as.numeric(ethnic_hispanic) %>% replace_na(0),
+       race_american_indian = as.numeric(race_american_indian) %>% replace_na(0), 
+       race_asian = as.numeric(race_asian)%>% replace_na(0), 
+       race_black = as.numeric(race_black)%>% replace_na(0), 
+       race_pacific_islander = as.numeric(race_pacific_islander)%>% replace_na(0), 
+       race_white = as.numeric(race_white)%>% replace_na(0), 
+       two_or_more_races = as.numeric(two_or_more_races)%>% replace_na(0)
+       ) 
+# race_gen %>% count(system_name, school_name) %>% filter(n > 1)
+# frl %>% count(system_name, school_name) %>% filter(n > 1)
+# race_gen %>% dim()
+# frl %>% dim()
+
+demo_dat <- full_join(race_gen, frl) %>% 
+  mutate(school_id = factor(school_id), 
+         system_id = factor(system_id),
+         system_name = factor(system_name), 
+         #kk_12_percent_frl = factor(kk_12_percent_frl), 
+         #kk_12_percent_frl = as.numeric(kk_12_percent_frl),
+         total = race_white +
+           race_american_indian + 
+           race_asian + 
+           race_black + 
+           race_pacific_islander + 
+           two_or_more_races + 
+           ethnic_hispanic, 
+         prop_white = race_white/total, 
+         prop_black = race_black/total, 
+         prop_two = two_or_more_races/total, 
+         prop_hisp = ethnic_hispanic/total, 
+         prop_non_white = 1 - prop_white) %>% 
+  drop_na()
+
+
+```
+
+```{r, include = F}
+# disc_inc <- import(here("Data", "sr2019_discipline_incident_counts_sch.xlsx")) %>%
+#   clean_names() %>%
+#   select(-grade_range)
+
+
+disc_action <- import(here("Data", "sr2019_discipline_action_counts_sch.xlsx")) %>% 
+  clean_names() %>% 
+  select(-grade_range, -school_year) 
+
+# disc_dat <- full_join(disc_inc, disc_action)  %>% 
+#   mutate(school_id = factor(school_id), 
+#          system_id = factor(system_id),
+#          system_name = factor(system_name), 
+#          fac_schtype = factor(fac_schtype))
+
+disc_demo <- inner_join(disc_action, demo_dat)  %>% # will have to change this if we have multiple years
+  mutate(oss_adj = out_of_school_suspension_oss/total)
+```
+
+```{r, include = F}
+grad <- import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>% 
+  clean_names() %>% 
+  # we're filtering people out here, based on having enough people to graduate
+  filter(graduation_class_size != 'Too Few Students' & reporting_level == 'School') %>% 
+  select(-reporting_label, -reporting_level) %>% 
+  mutate(school_id = factor(school_id), 
+         system_id = factor(system_id),
+         system_name = factor(system_name), 
+         school_name = factor(school_name),
+         graduation_class_size = as.double(graduation_class_size),
+         total_graduated = as.double(total_graduated), 
+         graduation_rate = as.double(graduation_rate)
+         ) %>% 
+  drop_na()
+
+grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
+```
+
+
+```{r, include = F}
+complete_grad_dat <- left_join(grad_demo, disc_demo) %>% 
+  filter(graduation_rate > 0) %>% 
+  select(graduation_rate, oss_adj, contains('prop'), kk_12_percent_frl, school_name, fac_schtype, system_name) %>% 
+  drop_na()
 ```
 
 first tab
@@ -20,12 +128,39 @@ first tab
 Column {data-width=650}
 -----------------------------------------------------------------------
 
-### Chart A
+### General
+
+```{r, eval = F, include = F}
+#disc_demo %>% filter(system_name == 'Macon County')
+disc_demo %>% 
+  filter(fac_schtype %in% c('M', 'H')) %>% 
+  group_by(system_name, fac_schtype) %>% 
+  summarize(mean_oss_adj = mean(oss_adj),
+            se = sd(oss_adj)/sqrt(n()), 
+            mean_prop_non_white = mean(prop_non_white)) %>% 
+  ungroup() %>% 
+  #filter(mean_oss_adj > 0.2) %>% 
+  #summarize(mean_oss = mean(out_of_school_suspension_oss), 
+  #          se = sd(out_of_school_suspension_oss)/sqrt(n())) %>% 
+  ggplot(aes(x = mean_oss_adj, 
+             y = fct_reorder(system_name, mean_oss_adj), 
+             color = fac_schtype, 
+             size = mean_prop_non_white)) + 
+  geom_point(alpha = 0.5) +
+  facet_wrap(~fac_schtype) +
+  theme_minimal() +
+  labs(y = NULL, 
+       x = 'Out of School Suspensions per Student', 
+       title = 'Average OSS Rate for Georgian Middle and High Schools in each District'
+       ) +
+  theme(plot.title.position = 'plot', 
+        axis.text.y = element_blank())
+```
 
 ```{r}
-cars %>% ggplot(aes(x = dist, y = speed)) + geom_point()
 
 ```
+
 
 Column {data-width=350}
 -----------------------------------------------------------------------
@@ -42,5 +177,109 @@ Column {data-width=350}
 
 ```
 
-second tab
+Teachers & Admin
 ===
+
+
+
+Researchers
+===
+
+
+
+```{r, include = F}
+lm0 <- lm(data = complete_grad_dat,
+          formula = graduation_rate ~ 1)
+lm1 <- lm(data = complete_grad_dat,
+          formula = graduation_rate ~ kk_12_percent_frl)
+lm2 <- lm(data = complete_grad_dat,
+          formula = graduation_rate ~ oss_adj)
+lm3 <- lm(data = complete_grad_dat,
+          formula = graduation_rate ~ prop_non_white)
+lm4 <- lm(data = complete_grad_dat,
+          formula = graduation_rate ~ prop_non_white + kk_12_percent_frl + oss_adj)
+lm5 <- lm(data = complete_grad_dat,
+          formula = graduation_rate ~ prop_non_white*kk_12_percent_frl + oss_adj)
+lm6 <- lm(data = complete_grad_dat,
+          formula = graduation_rate ~ prop_non_white*kk_12_percent_frl)
+
+lm7 <- lm(data = complete_grad_dat,
+          formula = graduation_rate ~ prop_non_white*oss_adj + prop_non_white*kk_12_percent_frl)
+
+
+
+# summary(lm0)
+# summary(lm1)
+# summary(lm2)
+# summary(lm3)
+# summary(lm4)
+# summary(lm5)
+# summary(lm6)
+```
+
+```{r, include = F}
+# can show that there is an appearance of mediation if we don't take into account direct effect of race
+# library(lavaan)
+# 
+# mod <-
+# '
+# graduation_rate ~ b*oss_adj
+# oss_adj ~ a*prop_non_white
+# 
+# c:= a*b
+# '
+# fit <- cfa(mod, data = complete_grad_dat, 'MLR')
+# summary(fit, stand = T, fit = T)
+```
+
+
+```{r}
+t1 <-tibble(.rows = 129)
+t2 <-tibble(.rows = 1)
+t3 <- tibble(.rows = 1)
+
+for (i in list(lm0, lm1, lm2, lm3, lm4, lm5, lm6)){
+  next_pred <- tibble(predict(i), .rows = 129)
+  next_resid <<-tibble(sqrt(mean(i$residuals^2)), .rows = 1)
+  next_rsq <- tibble(summary(i)$r.square, .rows = 1)
+  t1 <<- cbind(t1, next_pred) 
+  t2 <<- cbind(t2, next_resid) 
+  t3 <<- cbind(t3, next_rsq) 
+}
+columns <- 
+  list('lm0',
+       'lm1',
+       'lm2',
+       'lm3',
+       'lm4',
+       'lm5',
+       'lm6')
+
+colnames(t1) <- columns
+colnames(t2) <- columns
+colnames(t3) <- columns
+
+t2_long <- 
+  t2 %>% 
+  pivot_longer('lm0':'lm6', 
+               names_to = 'model',
+               values_to = 'rmse')
+
+t3_long <- 
+  t3 %>% 
+  pivot_longer('lm0':'lm6', 
+               names_to = 'model',
+               values_to = 'rsq')
+
+fit_stats <- 
+  left_join(t2_long, t3_long, by = 'model') %>% 
+  mutate(model = factor(model, levels = columns, 
+                        labels = c('Intercept-Only', 
+                                   'Proportion FRL', 
+                                   'OSS/Student',
+                                   'Proportion Non-White',
+                                   'Three Predictor', 
+                                   'Three Predictor & Interaction', 
+                                   'Parsimoneous'))) 
+fit_stats
+```
