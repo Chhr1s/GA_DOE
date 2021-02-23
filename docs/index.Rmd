@@ -5,7 +5,7 @@ output:
     orientation: columns
     vertical_layout: fill
     social: menu
-    source_code: https://chhr1s.github.io/GA_DOE_Public/
+    source_code: https://chhr1s.github.io/GA_DOE_Public/docs/index.html
 ---
 
 ```{r setup, include=FALSE}
