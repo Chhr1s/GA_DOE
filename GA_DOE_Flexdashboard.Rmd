@@ -3,16 +3,12 @@ title: "Untitled"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
-    social: menu
     vertical_layout: fill
 ---
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
 ```
-
-General
-=========
 
 Column {data-width=650}
 -----------------------------------------------------------------------
@@ -38,11 +34,3 @@ Column {data-width=350}
 
 ```
 
-
-Teachers & Admin
-===
-
-
-
-Researchers
-===
