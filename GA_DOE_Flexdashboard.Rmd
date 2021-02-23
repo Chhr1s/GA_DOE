@@ -12,6 +12,10 @@ library(flexdashboard)
 library(tidyverse)
 ```
 
+first tab
+===
+
+
 Column {data-width=650}
 -----------------------------------------------------------------------
 
@@ -37,3 +41,5 @@ Column {data-width=350}
 
 ```
 
+second tab
+===
