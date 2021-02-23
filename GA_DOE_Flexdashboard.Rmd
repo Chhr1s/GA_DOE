@@ -8,6 +8,7 @@ output:
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
+library(tidyverse)
 ```
 
 Column {data-width=650}
@@ -16,6 +17,7 @@ Column {data-width=650}
 ### Chart A
 
 ```{r}
+cars %>% ggplot(aes(x = dist, y = speed)) + geom_point()
 
 ```
 
