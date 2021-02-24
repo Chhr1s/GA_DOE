@@ -14,6 +14,8 @@ library(tidyverse)
 library(rio)
 library(here)
 library(janitor)
+library(sf)
+library(leaidr)
 ```
 
 
@@ -27,7 +29,9 @@ frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report
            sep = " - ",
            extra = "merge") %>% 
   filter(system_name != 'N/A')
+```
 
+```{r}
 race_gen <- import(here("Data", "FTE Enrollment by Race_Ethnicity and Gender Fiscal Year2019-1 Data Report.csv")) %>% 
   clean_names() %>% 
   filter(!is.na(system_id) & 
@@ -70,8 +74,6 @@ demo_dat <- full_join(race_gen, frl) %>%
          prop_hisp = ethnic_hispanic/total, 
          prop_non_white = 1 - prop_white) %>% 
   drop_na()
-
-
 ```
 
 ```{r, include = F}
@@ -113,7 +115,6 @@ grad <- import(here("Data", "4-Year Cohort Graduation Rate State District School
 grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
 ```
 
-
 ```{r, include = F}
 complete_grad_dat <- left_join(grad_demo, disc_demo) %>% 
   filter(graduation_rate > 0) %>% 
@@ -123,7 +124,6 @@ complete_grad_dat <- left_join(grad_demo, disc_demo) %>%
 
 first tab
 ===
-
 
 Column {data-width=650}
 -----------------------------------------------------------------------
@@ -158,9 +158,51 @@ disc_demo %>%
 ```
 
 ```{r}
-
+disc_demo %>% 
+  group_by(fac_schtype) %>% 
+  summarize(mean_oss_adj = mean(oss_adj)) %>% 
+  ggplot(aes(x = mean_oss_adj, 
+             y = fct_reorder(fac_schtype, mean_oss_adj), 
+             fill = fac_schtype)) + 
+  geom_col(show.legend = F,
+           alpha = 0.75) + 
+  theme_minimal() +
+  labs(x = 'Average OSS/student', 
+       y = 'School Type', 
+       title = 'Average Out of School Suspension per Student by School Type') + 
+  scale_fill_viridis_d()
 ```
 
+```{r}
+# are quartiles clean/interprettable? 
+# add geom_label()
+disc_demo <- disc_demo %>% 
+  filter(fac_schtype != 'K12') %>% 
+  mutate(quartiles = ntile(prop_non_white, 4), 
+         tenths = ntile(prop_non_white, 10), 
+         hundreds = ntile(prop_non_white, 100))
+
+disc_demo %>% 
+  filter(fac_schtype != 'K12') %>% 
+  group_by(fac_schtype, quartiles) %>% 
+  mutate(mean_oss_adj = mean(oss_adj)) %>% 
+  ggplot(aes(fill = mean_oss_adj, 
+             y = fct_reorder(fac_schtype, mean_oss_adj),
+             x = quartiles, 
+             group = fac_schtype)) + 
+  geom_tile(color = 'white') +
+  coord_fixed() +
+  theme_minimal() + 
+  scale_fill_continuous(#name = 'Proportion',
+                        type = 'viridis') + 
+  theme(legend.position = 'bottom', 
+        plot.title.position = 'plot') +
+  labs(y = 'School Type',
+       x = 'Quartiles of Proportion Non-White', 
+       color = 'Average OSS/Student', 
+       title = 'Heatmap of Average OSS/Student by School Type 
+       and Quartile of Proportion Non-White') 
+```
 
 Column {data-width=350}
 -----------------------------------------------------------------------
@@ -168,13 +210,51 @@ Column {data-width=350}
 ### Chart B
 
 ```{r}
+# if(!identical(getOption("bitmapType"), "cairo") && isTRUE(capabilities()[["cairo"]])){
+#   options(bitmapType = "cairo")
+# }
+options(device = "X11")
+X11(type = "cairo")
+X11.options(type = "cairo")
+```
 
+```{r}
+GA <- lea_get(state = 'GA')
+
+GA_sf <- GA %>%
+  st_as_sf()
+
+GA_sf$short_name  <- str_replace(string = GA$NAME, pattern = " District", "") %>%
+  str_replace(pattern = " Schools", "") %>%
+  str_replace(pattern = " School", "")
+
+GA_sf <- GA %>% left_join(frl, by = c('short_name' = 'system_name'))
+
+dim(GA)
+dim(frl)
+dim(GA_sf)
+
+```
+
+```{r}
+GA_sf %>%
+  select(geometry) %>% 
+  ggplot2::ggplot() +
+  ggplot2::geom_sf() 
+print(GA_sf)
+```
+
+```{r}
+GA_sf %>%
+  select(geometry, kk_12_percent_frl) %>% 
+  ggplot2::ggplot() +
+  ggplot2::geom_sf(aes(fill = kk_12_percent_frl))
 ```
 
 ### Chart C
 
 ```{r}
-
+# fill = kk_12_percent_frl
 ```
 
 Teachers & Admin
