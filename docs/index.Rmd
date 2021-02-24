@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "EDLD 652 Final"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
@@ -17,11 +17,9 @@ library(janitor)
 library(sf)
 library(leaidr)
 library(tmap)
-#install.packages('tigris')
 library(tigris)
 options(tigris_class = "sf")
-#options(tigris_use_cache = TRUE)
-#quartz()
+options(tigris_use_cache = TRUE)
 ```
 
 
@@ -56,10 +54,6 @@ race_gen <- import(here("Data", "FTE Enrollment by Race_Ethnicity and Gender Fis
        race_white = as.numeric(race_white)%>% replace_na(0), 
        two_or_more_races = as.numeric(two_or_more_races)%>% replace_na(0)
        ) 
-# race_gen %>% count(system_name, school_name) %>% filter(n > 1)
-# frl %>% count(system_name, school_name) %>% filter(n > 1)
-# race_gen %>% dim()
-# frl %>% dim()
 
 demo_dat <- full_join(race_gen, frl) %>% 
   mutate(school_id = factor(school_id), 
@@ -87,45 +81,49 @@ demo_dat <- full_join(race_gen, frl) %>%
 #   clean_names() %>%
 #   select(-grade_range)
 
-
-disc_action <- import(here("Data", "sr2019_discipline_action_counts_sch.xlsx")) %>% 
-  clean_names() %>% 
-  select(-grade_range, -school_year) 
-
 # disc_dat <- full_join(disc_inc, disc_action)  %>% 
 #   mutate(school_id = factor(school_id), 
 #          system_id = factor(system_id),
 #          system_name = factor(system_name), 
 #          fac_schtype = factor(fac_schtype))
 
+
+disc_action <- import(here("Data", "sr2019_discipline_action_counts_sch.xlsx")) %>% 
+  clean_names() %>% 
+  select(-grade_range, -school_year) 
+
 disc_demo <- inner_join(disc_action, demo_dat)  %>% # will have to change this if we have multiple years
   mutate(oss_adj = out_of_school_suspension_oss/total)
 ```
 
 ```{r, include = F}
-grad <- import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>% 
-  clean_names() %>% 
-  # we're filtering people out here, based on having enough people to graduate
-  filter(graduation_class_size != 'Too Few Students' & reporting_level == 'School') %>% 
-  select(-reporting_label, -reporting_level) %>% 
-  mutate(school_id = factor(school_id), 
-         system_id = factor(system_id),
-         system_name = factor(system_name), 
-         school_name = factor(school_name),
-         graduation_class_size = as.double(graduation_class_size),
-         total_graduated = as.double(total_graduated), 
-         graduation_rate = as.double(graduation_rate)
-         ) %>% 
-  drop_na()
-
-grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
+# grad <- import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>% 
+#   clean_names() %>% 
+#   # we're filtering people out here, based on having enough people to graduate
+#   filter(graduation_class_size != 'Too Few Students' & reporting_level == 'School') %>% 
+#   select(-reporting_label, -reporting_level) %>% 
+#   mutate(school_id = factor(school_id), 
+#          system_id = factor(system_id),
+#          system_name = factor(system_name), 
+#          school_name = factor(school_name),
+#          graduation_class_size = as.double(graduation_class_size),
+#          total_graduated = as.double(total_graduated), 
+#          graduation_rate = as.double(graduation_rate)
+#          ) %>% 
+#   drop_na()
+# 
+# # import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>% 
+# #    clean_names() %>% 
+# #   count(graduation_class_size) %>% arrange(desc(n))
+# 
+# grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
 ```
 
 ```{r, include = F}
-complete_grad_dat <- left_join(grad_demo, disc_demo) %>% 
-  filter(graduation_rate > 0) %>% 
-  select(graduation_rate, oss_adj, contains('prop'), kk_12_percent_frl, school_name, fac_schtype, system_name) %>% 
-  drop_na()
+# complete_grad_dat <- left_join(grad_demo, disc_demo) %>% 
+#   filter(graduation_rate > 0) %>% 
+#   select(graduation_rate, oss_adj, contains('prop'), kk_12_percent_frl, school_name, fac_schtype, system_name) %>% 
+#   drop_na()
 ```
 
 
@@ -133,10 +131,28 @@ complete_grad_dat <- left_join(grad_demo, disc_demo) %>%
 GA_sf <- 
   lea_get(state = 'GA') %>% 
   st_as_sf() %>% 
-  mutate(system_name = str_replace(string = NAME, pattern = " District", ""), 
-         system_name = str_replace(string = system_name, pattern = " Schools", ""), 
-         system_name = str_replace(string = system_name, pattern = " School", "")
+  mutate(system_name = 
+           str_replace(string = NAME, 
+                       pattern = " District", ""), 
+         system_name = 
+           str_replace(string = system_name, 
+                       pattern = " Schools", ""), 
+         system_name = 
+           str_replace(string = system_name, 
+                       pattern = " School", "")
          )
+```
+
+
+```{r, eval = T, include = F}
+#disc_demo %>% filter(system_name == 'Macon County')
+oss <-
+  disc_demo %>% 
+  filter(fac_schtype %in% c('M','H')) %>% 
+  group_by(system_name, fac_schtype) %>% 
+  summarize(average_oss = mean(oss_adj), 
+            average_prop_non_white = mean(prop_non_white))
+
 ```
 
 first tab
@@ -147,47 +163,44 @@ Column {data-width=650}
 
 ### General
 
-```{r, eval = F, include = F}
-#disc_demo %>% filter(system_name == 'Macon County')
-
-ms_oss <-
-  disc_demo %>% 
-  filter(fac_schtype == 'M') %>% 
-  group_by(system_name) %>% 
-  summarize(average_oss = mean(oss_adj), 
-            average_prop_non_white = mean(prop_non_white))
-
-hs_oss <-
-  disc_demo %>% 
-  filter(fac_schtype == 'H') %>% 
-  group_by(system_name) %>% 
-  summarize(average_oss = mean(oss_adj), 
-            average_prop_non_white = mean(prop_non_white))
-```
 
 
 ```{r, include = F}
-ms_oss <- GA_sf %>% left_join(ms_oss, by = c('system_name'))
-hs_oss <- GA_sf %>% left_join(hs_oss, by = c('system_name'))
-
+GA_sf <- GA_sf %>% left_join(oss)
+#grad_plot <- GA_sf %>% left_join(complete_grad_dat, by = c('system_name'))
 ```
 
 ```{r}
-par(mfrow=c(1,2))
-tm_shape(ms_oss) + tm_polygons('average_oss')
-quartz()
-tm_shape(ms_oss) + tm_polygons('average_prop_non_white')
+#par(mfrow=c(1,2))
+
+tm_shape(GA_sf) + 
+  tm_polygons('average_oss') + 
+  tm_facets(by = 'fac_schtype', drop.NA.facets = T)
+#tm_shape(ms_oss) + tm_polygons('average_prop_non_white')
+```
+
+```{r}
+tm_shape(GA_sf) + 
+  tm_polygons('average_prop_non_white') + 
+  tm_facets(by = 'fac_schtype', drop.NA.facets = F, textNA = 'Not Reported')
+
+
 ```
 
 
 ```{r}
 par(mfrow=c(1,2))
-quartz()
+#quartz()
 tm_shape(hs_oss) + tm_polygons('average_oss')
-quartz()
+#quartz()
 tm_shape(hs_oss) + tm_polygons('average_prop_non_white')
 ```
 
+```{r}
+par(mfrow=c(1,2))
+quartz()
+tm_shape(grad_plot) + tm_polygons('graduation_rate')
+```
 
 ```{r}
 disc_demo %>% 
