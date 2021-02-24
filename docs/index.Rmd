@@ -16,6 +16,12 @@ library(here)
 library(janitor)
 library(sf)
 library(leaidr)
+library(tmap)
+#install.packages('tigris')
+library(tigris)
+options(tigris_class = "sf")
+#options(tigris_use_cache = TRUE)
+#quartz()
 ```
 
 
@@ -122,6 +128,17 @@ complete_grad_dat <- left_join(grad_demo, disc_demo) %>%
   drop_na()
 ```
 
+
+```{r, include = F}
+GA_sf <- 
+  lea_get(state = 'GA') %>% 
+  st_as_sf() %>% 
+  mutate(system_name = str_replace(string = NAME, pattern = " District", ""), 
+         system_name = str_replace(string = system_name, pattern = " Schools", ""), 
+         system_name = str_replace(string = system_name, pattern = " School", "")
+         )
+```
+
 first tab
 ===
 
@@ -132,6 +149,47 @@ Column {data-width=650}
 
 ```{r, eval = F, include = F}
 #disc_demo %>% filter(system_name == 'Macon County')
+
+ms_oss <-
+  disc_demo %>% 
+  filter(fac_schtype == 'M') %>% 
+  group_by(system_name) %>% 
+  summarize(average_oss = mean(oss_adj), 
+            average_prop_non_white = mean(prop_non_white))
+
+hs_oss <-
+  disc_demo %>% 
+  filter(fac_schtype == 'H') %>% 
+  group_by(system_name) %>% 
+  summarize(average_oss = mean(oss_adj), 
+            average_prop_non_white = mean(prop_non_white))
+```
+
+
+```{r, include = F}
+ms_oss <- GA_sf %>% left_join(ms_oss, by = c('system_name'))
+hs_oss <- GA_sf %>% left_join(hs_oss, by = c('system_name'))
+
+```
+
+```{r}
+par(mfrow=c(1,2))
+tm_shape(ms_oss) + tm_polygons('average_oss')
+quartz()
+tm_shape(ms_oss) + tm_polygons('average_prop_non_white')
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+quartz()
+tm_shape(hs_oss) + tm_polygons('average_oss')
+quartz()
+tm_shape(hs_oss) + tm_polygons('average_prop_non_white')
+```
+
+
+```{r}
 disc_demo %>% 
   filter(fac_schtype %in% c('M', 'H')) %>% 
   group_by(system_name, fac_schtype) %>% 
@@ -213,42 +271,29 @@ Column {data-width=350}
 # if(!identical(getOption("bitmapType"), "cairo") && isTRUE(capabilities()[["cairo"]])){
 #   options(bitmapType = "cairo")
 # }
-options(device = "X11")
-X11(type = "cairo")
-X11.options(type = "cairo")
+#options(device = "Quartz")
+# X11(type = "cairo")
+# X11.options(type = "cairo")
+```
+
+
+
+
+```{r}
+# GA_sf %>%
+#   ggplot() +
+#   geom_sf(aes(geometry = geometry)) 
+#print(GA_sf)
 ```
 
 ```{r}
-GA <- lea_get(state = 'GA')
+#ggplot(data = mtcars, aes(x = disp, y = mpg)) + geom_point()
 
-GA_sf <- GA %>%
-  st_as_sf()
-
-GA_sf$short_name  <- str_replace(string = GA$NAME, pattern = " District", "") %>%
-  str_replace(pattern = " Schools", "") %>%
-  str_replace(pattern = " School", "")
-
-GA_sf <- GA %>% left_join(frl, by = c('short_name' = 'system_name'))
-
-dim(GA)
-dim(frl)
-dim(GA_sf)
-
-```
-
-```{r}
-GA_sf %>%
-  select(geometry) %>% 
-  ggplot2::ggplot() +
-  ggplot2::geom_sf() 
-print(GA_sf)
-```
-
-```{r}
-GA_sf %>%
-  select(geometry, kk_12_percent_frl) %>% 
-  ggplot2::ggplot() +
-  ggplot2::geom_sf(aes(fill = kk_12_percent_frl))
+#quartz()
+# GA_sf %>%
+#   #select(geometry, kk_12_percent_frl) %>% 
+#   ggplot() +
+#   geom_sf(aes(fill = kk_12_percent_frl))
 ```
 
 ### Chart C
