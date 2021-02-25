@@ -256,7 +256,6 @@ GA_sf <-
          )
 ```
 
-
 ```{r, eval = T, include = F}
 #disc_demo %>% filter(system_name == 'Macon County')
 GA_sf <- 
@@ -269,40 +268,43 @@ GA_sf <-
 ```
 
 ```{r}
-#par(mfrow=c(1,2))
-# 
-oss_map <- 
-  tm_shape(GA_sf) +
-  tm_polygons('oss')  
-oss_map + tm_fill(palette = )
-
-# tm_shape(large_dat) +
-#   tm_polygons('prop_non_white')
-
-  #tm_facets(by = 'fac_schtype', drop.NA.facets = T)
-#tm_shape(ms_oss) + tm_polygons('average_prop_non_white')
+GA_sf <- 
+  GA_sf %>% 
+  mutate(oss_qt = ntile(oss, 5), 
+         pnw_qt = ntile(prop_non_white, 5), )
 ```
 
-```{r, eval = F}
-tm_shape(GA_sf) + 
-  tm_polygons('average_prop_non_white') + 
-  tm_facets(by = 'fac_schtype', drop.NA.facets = F, textNA = 'Not Reported')
-
+```{r}
+oss_map <- 
+  tm_shape(GA_sf) +
+  tm_polygons(c('oss_qt', 'pnw_qt'),
+              labels = c('1st quintile',
+                         '2nd quintile',
+                         '3rd quintile',
+                         '4th quintile',
+                         '5th quintile',
+                         'Missing'),
+              palette = 'Blues', 
+              title = 'Quintiles', 
+              legend.hist = F)  + 
+  tm_facets(sync = F, ncol = 2) + 
+  tm_layout(legend.outside = T, 
+            panel.labels = c("OSS per Student", "Prop. Non-White"),)
 
 ```
 
 
 ```{r, eval = F}
 par(mfrow=c(1,2))
-#quartz()
+
 tm_shape(hs_oss) + tm_polygons('average_oss')
-#quartz()
+
 tm_shape(hs_oss) + tm_polygons('average_prop_non_white')
 ```
 
 ```{r, eval = F}
 par(mfrow=c(1,2))
-quartz()
+
 tm_shape(grad_plot) + tm_polygons('graduation_rate')
 ```
 
@@ -385,12 +387,7 @@ Column {data-width=350}
 ### Chart B
 
 ```{r}
-# if(!identical(getOption("bitmapType"), "cairo") && isTRUE(capabilities()[["cairo"]])){
-#   options(bitmapType = "cairo")
-# }
-#options(device = "Quartz")
-# X11(type = "cairo")
-# X11.options(type = "cairo")
+oss_map
 ```
 
 
