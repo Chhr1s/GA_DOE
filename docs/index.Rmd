@@ -20,80 +20,96 @@ library(tmap)
 library(tigris)
 options(tigris_class = "sf")
 options(tigris_use_cache = TRUE)
+library(tmaptools)
 ```
 
 
-```{r, include = F}
-frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report.csv")) %>% 
+```{r import, include = F}
+frl <- import(
+  here("Data", 
+       "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report.csv")
+  ) %>% 
   clean_names() %>% 
-  mutate(kk_12_percent_frl = as.numeric(kk_12_percent_frl), 
-         kk_12_percent_frl = replace_na(kk_12_percent_frl, 0)) %>% 
-  separate(col = school_id_school_name, 
-           into = c('school_id','school_name'), 
-           sep = " - ",
-           extra = "merge") %>% 
-  filter(system_name != 'N/A')
-```
+  mutate(kk_12_percent_frl = 
+           as.numeric(kk_12_percent_frl))
 
-```{r}
-race_gen <- import(here("Data", "FTE Enrollment by Race_Ethnicity and Gender Fiscal Year2019-1 Data Report.csv")) %>% 
+total_students <- import(
+  here("Data", 
+       'FTE Enrollment by Grade Fiscal Year2019-1 Data Report.csv')
+  ) %>% 
   clean_names() %>% 
-  filter(!is.na(system_id) & 
-           gender == 'Total' &
-           system_name != 'N/A') %>% 
-  select(-gender) %>% 
-  separate(col = school_id, 
-           into = c('school_id','school_name'), 
-           sep = "-",
-           extra = "merge") %>% 
-  mutate(ethnic_hispanic = as.numeric(ethnic_hispanic) %>% replace_na(0),
-       race_american_indian = as.numeric(race_american_indian) %>% replace_na(0), 
-       race_asian = as.numeric(race_asian)%>% replace_na(0), 
-       race_black = as.numeric(race_black)%>% replace_na(0), 
-       race_pacific_islander = as.numeric(race_pacific_islander)%>% replace_na(0), 
-       race_white = as.numeric(race_white)%>% replace_na(0), 
-       two_or_more_races = as.numeric(two_or_more_races)%>% replace_na(0)
-       ) 
+  select(system_name, total)
 
-demo_dat <- full_join(race_gen, frl) %>% 
-  mutate(school_id = factor(school_id), 
-         system_id = factor(system_id),
-         system_name = factor(system_name), 
-         #kk_12_percent_frl = factor(kk_12_percent_frl), 
-         #kk_12_percent_frl = as.numeric(kk_12_percent_frl),
-         total = race_white +
-           race_american_indian + 
-           race_asian + 
-           race_black + 
-           race_pacific_islander + 
-           two_or_more_races + 
-           ethnic_hispanic, 
-         prop_white = race_white/total, 
-         prop_black = race_black/total, 
-         prop_two = two_or_more_races/total, 
-         prop_hisp = ethnic_hispanic/total, 
-         prop_non_white = 1 - prop_white) %>% 
-  drop_na()
-```
+race_gen <- import(
+  here("Data", 
+       "FTE Enrollment by Race_Ethnicity and Gender Fiscal Year2019-1 Data Report.csv")
+  ) %>% 
+  clean_names()
 
-```{r, include = F}
-# disc_inc <- import(here("Data", "sr2019_discipline_incident_counts_sch.xlsx")) %>%
-#   clean_names() %>%
-#   select(-grade_range)
-
-# disc_dat <- full_join(disc_inc, disc_action)  %>% 
-#   mutate(school_id = factor(school_id), 
-#          system_id = factor(system_id),
-#          system_name = factor(system_name), 
-#          fac_schtype = factor(fac_schtype))
-
-
-disc_action <- import(here("Data", "sr2019_discipline_action_counts_sch.xlsx")) %>% 
+disc_action <- import(
+  here("Data", 
+       "sr2019_discipline_action_counts_sch.xlsx")
+  ) %>% 
   clean_names() %>% 
   select(-grade_range, -school_year) 
 
-disc_demo <- inner_join(disc_action, demo_dat)  %>% # will have to change this if we have multiple years
-  mutate(oss_adj = out_of_school_suspension_oss/total)
+# aggregated disc action
+agg_disc <-
+  disc_action %>% 
+  group_by(system_name) %>% 
+  summarize(oss = mean(out_of_school_suspension_oss), 
+            juvie_ref = mean(juvenile_court_referral), 
+            physical_restraint = mean(physical_restraint), 
+            corporal_punishment = mean(corporal_punishment), 
+            detention = mean(detention), 
+            permanent_expulsion = mean(permanent_expulsion), 
+            iss = mean(in_school_suspension_iss)
+            )
+
+race_gen <- 
+  race_gen %>% 
+  filter(gender == 'Total') %>% 
+  mutate(ethnic_hispanic = as.numeric(ethnic_hispanic), 
+       race_american_indian = as.numeric(race_american_indian), 
+       race_asian = as.numeric(race_asian), 
+       race_black = as.numeric(race_black), 
+       race_pacific_islander = as.numeric(race_pacific_islander), 
+       race_white = as.numeric(race_white), 
+       two_or_more_races = as.numeric(two_or_more_races)
+       ) %>% 
+  select(-gender)
+
+race_gen <- race_gen %>%  
+  left_join(total_students) %>% 
+  filter(system_name != 'State-Wide') %>% 
+  transmute(system_name,
+            prop_white = race_white/total, 
+            prop_black = race_black/total, 
+            prop_hisp = ethnic_hispanic/total, 
+            prop_non_white = 1 - prop_white,
+            total
+            ) %>% 
+  mutate(prop_non_white = 
+           if_else(is.na(prop_non_white), 
+                   prop_black,  
+                   # there is one district for which this is an issue
+                   # International Academy of Smyrna
+                   prop_non_white))
+
+
+#aggregated and proportions
+agg_disc_prop <- 
+  left_join(race_gen, agg_disc)  %>% 
+  filter(system_name !='N/A') %>% 
+  mutate(district = factor(system_name), 
+         oss = oss/total, 
+         juvie_ref = juvie_ref/total,
+         physical_restraint = physical_restraint/total, 
+         corporal_punishment = corporal_punishment/total, 
+         detention = detention/total, 
+         permanent_expulsion = permanent_expulsion/total, 
+         iss = iss/total) %>% 
+  select(-system_name) 
 ```
 
 ```{r, include = F}
@@ -126,36 +142,7 @@ disc_demo <- inner_join(disc_action, demo_dat)  %>% # will have to change this i
 #   drop_na()
 ```
 
-
-```{r, include = F}
-GA_sf <- 
-  lea_get(state = 'GA') %>% 
-  st_as_sf() %>% 
-  mutate(system_name = 
-           str_replace(string = NAME, 
-                       pattern = " District", ""), 
-         system_name = 
-           str_replace(string = system_name, 
-                       pattern = " Schools", ""), 
-         system_name = 
-           str_replace(string = system_name, 
-                       pattern = " School", "")
-         )
-```
-
-
-```{r, eval = T, include = F}
-#disc_demo %>% filter(system_name == 'Macon County')
-oss <-
-  disc_demo %>% 
-  filter(fac_schtype %in% c('M','H')) %>% 
-  group_by(system_name, fac_schtype) %>% 
-  summarize(average_oss = mean(oss_adj), 
-            average_prop_non_white = mean(prop_non_white))
-
-```
-
-first tab
+General
 ===
 
 Column {data-width=650}
@@ -164,22 +151,139 @@ Column {data-width=650}
 ### General
 
 
+```{r without_labs, include = F}
+background <- agg_disc_prop %>% 
+  filter(!is.na(district) & !is.na(oss) & !is.na(prop_non_white)) %>% 
+  group_by(oss < 0.05, 
+           oss < 0.10 & oss >= 0.05, 
+           oss < 0.15 & oss >= 0.10, 
+           oss < 0.20 & oss >= 0.15,
+           oss < 0.25 & oss >= 0.20,
+           oss >= 0.25
+           ) %>% 
+  summarize(average_nw_prop = mean(prop_non_white), 
+            average_oss = mean(oss)) %>% 
+  ungroup() %>% 
+  select(average_nw_prop, average_oss) %>% 
+  mutate(xmin = rev(c(0, 0.05, 0.10, 0.15, 0.20)), 
+         xmax = rev(c(0.049, 0.099, 0.149, 0.199, 0.251))
+         )
+general_plot <- 
+agg_disc_prop %>% 
+  filter(!is.na(district) & !is.na(oss)) %>% 
+  ggplot() + 
+   geom_rect(inherit.aes = F,
+            data = background, 
+            aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf, 
+                fill = average_nw_prop), 
+            alpha = 0.9) +
+  geom_col(inherit.aes = F,
+           aes(y = fct_reorder(district, oss), 
+             x = oss,
+             fill = prop_non_white), color = 'gray30', size = 0.1, alpha = 0.8) + 
+  theme(axis.text.y = element_blank(), 
+        plot.title.position = 'plot', 
+        axis.ticks.y = element_blank(), 
+        panel.grid.minor = element_blank(), 
+        panel.grid.major.y = element_blank(), 
+        panel.grid.major.x = element_line(color = 'gray30'), 
+        legend.position = 'bottom'
+        ) + 
+  labs(y = 'Individual Districts', 
+       x = 'District Average OSS per Student', 
+       title = 'District Averages of Out of School Suspensions per Student by Proportion Non-White', 
+       fill = 'Proportion
+Non-White') +
+  scale_fill_distiller(palette = 
+                         'Blues', 
+                       type = 'seq', 
+                       direction = 1)
+```
+
+```{r}
+labeled_plot <- 
+  general_plot + 
+  geom_label(inherit.aes = F, 
+             show.legend = F,
+             data = background, aes(
+             label = round(average_nw_prop, 2),
+             x = xmin + 0.025, 
+             y = rep(20, 5), 
+             #color = average_nw_prop
+             ),
+             fill = 'coral3') +
+  geom_label(inherit.aes = F, 
+             show.legend = F,
+             data = background, aes(
+             label = round(average_oss, 2),
+             x = xmin + 0.025, 
+             y = rep(40, 5),
+             #color = average_oss
+             ),
+             fill = 'coral') +
+  coord_cartesian(clip = 'off') +
+  geom_label(inherit.aes = F, 
+            x = 0.025, 
+            y = -55, 
+            label = 'Avg. Proportion\nNon-White\nwithin block', 
+            fill = 'coral3') + 
+  geom_label(inherit.aes = F, 
+            x = 0.225, 
+            y = -55, 
+            label = 'Average OSS\nwithin block', 
+            fill = 'coral') #+
+  # scale_color_distiller(palette = 
+  #                        'Blues', 
+  #                      type = 'seq', 
+  #                      direction = 1)
+
+labeled_plot 
+```
+
+```{r, eval = T, include = F}
+GA_sf <- 
+  lea_get(state = 'GA') %>% 
+  st_as_sf() %>% 
+  mutate(district = 
+           str_replace(string = NAME, 
+                       pattern = " District", ""), 
+         district = 
+           str_replace(string = district, 
+                       pattern = " Schools", ""), 
+         district = 
+           str_replace(string = district, 
+                       pattern = " School", "")
+         )
+```
+
+
+```{r, eval = T, include = F}
+#disc_demo %>% filter(system_name == 'Macon County')
+GA_sf <- 
+  GA_sf %>% left_join(agg_disc_prop)
+```
 
 ```{r, include = F}
-GA_sf <- GA_sf %>% left_join(oss)
+#GA_sf <- GA_sf %>% left_join(oss)
 #grad_plot <- GA_sf %>% left_join(complete_grad_dat, by = c('system_name'))
 ```
 
 ```{r}
 #par(mfrow=c(1,2))
+# 
+oss_map <- 
+  tm_shape(GA_sf) +
+  tm_polygons('oss')  
+oss_map + tm_fill(palette = )
 
-tm_shape(GA_sf) + 
-  tm_polygons('average_oss') + 
-  tm_facets(by = 'fac_schtype', drop.NA.facets = T)
+# tm_shape(large_dat) +
+#   tm_polygons('prop_non_white')
+
+  #tm_facets(by = 'fac_schtype', drop.NA.facets = T)
 #tm_shape(ms_oss) + tm_polygons('average_prop_non_white')
 ```
 
-```{r}
+```{r, eval = F}
 tm_shape(GA_sf) + 
   tm_polygons('average_prop_non_white') + 
   tm_facets(by = 'fac_schtype', drop.NA.facets = F, textNA = 'Not Reported')
@@ -188,7 +292,7 @@ tm_shape(GA_sf) +
 ```
 
 
-```{r}
+```{r, eval = F}
 par(mfrow=c(1,2))
 #quartz()
 tm_shape(hs_oss) + tm_polygons('average_oss')
@@ -196,13 +300,13 @@ tm_shape(hs_oss) + tm_polygons('average_oss')
 tm_shape(hs_oss) + tm_polygons('average_prop_non_white')
 ```
 
-```{r}
+```{r, eval = F}
 par(mfrow=c(1,2))
 quartz()
 tm_shape(grad_plot) + tm_polygons('graduation_rate')
 ```
 
-```{r}
+```{r, eval = F}
 disc_demo %>% 
   filter(fac_schtype %in% c('M', 'H')) %>% 
   group_by(system_name, fac_schtype) %>% 
@@ -228,7 +332,7 @@ disc_demo %>%
         axis.text.y = element_blank())
 ```
 
-```{r}
+```{r, eval = F}
 disc_demo %>% 
   group_by(fac_schtype) %>% 
   summarize(mean_oss_adj = mean(oss_adj)) %>% 
@@ -244,7 +348,7 @@ disc_demo %>%
   scale_fill_viridis_d()
 ```
 
-```{r}
+```{r, eval = F}
 # are quartiles clean/interprettable? 
 # add geom_label()
 disc_demo <- disc_demo %>% 
@@ -325,7 +429,7 @@ Researchers
 
 
 
-```{r, include = F}
+```{r, eval = F}
 lm0 <- lm(data = complete_grad_dat,
           formula = graduation_rate ~ 1)
 lm1 <- lm(data = complete_grad_dat,
@@ -371,7 +475,7 @@ lm7 <- lm(data = complete_grad_dat,
 ```
 
 
-```{r}
+```{r, eval = F}
 t1 <-tibble(.rows = 129)
 t2 <-tibble(.rows = 1)
 t3 <- tibble(.rows = 1)
