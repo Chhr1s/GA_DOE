@@ -113,26 +113,26 @@ agg_disc_prop <-
 ```
 
 ```{r, include = F}
-# grad <- import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>% 
-#   clean_names() %>% 
-#   # we're filtering people out here, based on having enough people to graduate
-#   filter(graduation_class_size != 'Too Few Students' & reporting_level == 'School') %>% 
-#   select(-reporting_label, -reporting_level) %>% 
-#   mutate(school_id = factor(school_id), 
-#          system_id = factor(system_id),
-#          system_name = factor(system_name), 
-#          school_name = factor(school_name),
-#          graduation_class_size = as.double(graduation_class_size),
-#          total_graduated = as.double(total_graduated), 
-#          graduation_rate = as.double(graduation_rate)
-#          ) %>% 
-#   drop_na()
-# 
-# # import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>% 
-# #    clean_names() %>% 
-# #   count(graduation_class_size) %>% arrange(desc(n))
-# 
-# grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
+grad <- import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>% # technically a 4 year graduation rate
+  clean_names() %>%
+  # we're filtering people out here, based on having enough people to graduate
+  filter(graduation_class_size != 'Too Few Students' & reporting_level == 'School') %>%
+  select(-reporting_label, -reporting_level) %>%
+  mutate(school_id = factor(school_id),
+         system_id = factor(system_id),
+         system_name = factor(system_name),
+         school_name = factor(school_name),
+         graduation_class_size = as.double(graduation_class_size),
+         total_graduated = as.double(total_graduated),
+         graduation_rate = as.double(graduation_rate)
+         ) %>%
+  drop_na()
+
+# import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>%
+#    clean_names() %>%
+#   count(graduation_class_size) %>% arrange(desc(n))
+
+grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
 ```
 
 ```{r, include = F}
@@ -152,6 +152,7 @@ Column {data-width=650}
 
 
 ```{r without_labs, include = F}
+## add some text explaining these
 background <- agg_disc_prop %>% 
   filter(!is.na(district) & !is.na(oss) & !is.na(prop_non_white)) %>% 
   group_by(oss < 0.05, 
@@ -419,12 +420,13 @@ oss_map
 Teachers & Admin
 ===
 
+```{r}
+#gotta figure out what to put here
+```
 
 
 Researchers
 ===
-
-
 
 ```{r, eval = F}
 lm0 <- lm(data = complete_grad_dat,
