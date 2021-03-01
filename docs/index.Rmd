@@ -21,6 +21,7 @@ library(tigris)
 options(tigris_class = "sf")
 options(tigris_use_cache = TRUE)
 library(tmaptools)
+library(gt)
 ```
 
 
@@ -235,13 +236,14 @@ labeled_plot <-
 ```{r, echo = F}
 summary <- agg_disc_prop %>% 
   filter(!is.na(district) & !is.na(oss) & !is.na(prop_non_white)) %>% 
-  mutate(`Quintile Proportion non-White` = ntile(prop_non_white, 5)) %>% 
-  group_by(`Quintile Proportion non-White`) %>% 
+  mutate(`Quintile non-White` = ntile(prop_non_white, 5)) %>% 
+  group_by(`Quintile non-White`) %>% 
   summarize(`Average OSS/Student` = mean(oss))
 
 comparison <- summary$`Average OSS/Student`[1]
 
-percent_change <- summary %>% mutate(`Percent Change from 1st` = 
+percent_change <- summary %>% 
+  mutate(`% Increase from 1st` = 
                      (`Average OSS/Student` - comparison)/comparison*100)
 ```
 
@@ -414,11 +416,13 @@ Column {data-width=350}
 ### Chart B
 
 ```{r}
-percent_change
+percent_change %>% 
+  round(digits = 3) %>% 
+  gt() %>% 
+  tab_header(
+    title = 'Average Out of School Suspension Per Student by Quintile Proportion non-White',
+  )
 ```
-
-
-
 
 ```{r}
 # GA_sf %>%
