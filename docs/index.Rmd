@@ -18,10 +18,14 @@ library(sf)
 library(leaidr)
 library(tmap)
 library(tigris)
-options(tigris_class = "sf")
-options(tigris_use_cache = TRUE)
 library(tmaptools)
 library(gt)
+library(cowplot)
+library(lme4)
+library(lmerTest)
+#library(mice)
+options(tigris_use_cache = TRUE)
+options(tigris_class = "sf")
 ```
 
 
@@ -64,7 +68,12 @@ agg_disc <-
             corporal_punishment = mean(corporal_punishment), 
             detention = mean(detention), 
             permanent_expulsion = mean(permanent_expulsion), 
-            iss = mean(in_school_suspension_iss)
+            harsh = oss + 
+              juvie_ref + 
+              physical_restraint + 
+              corporal_punishment + 
+              detention + 
+              permanent_expulsion
             )
 
 race_gen <- 
@@ -78,24 +87,47 @@ race_gen <-
        race_white = as.numeric(race_white), 
        two_or_more_races = as.numeric(two_or_more_races)
        ) %>% 
-  select(-gender)
-
-race_gen <- race_gen %>%  
+  select(-gender) %>%  
   left_join(total_students) %>% 
+  left_join(frl) %>% 
   filter(system_name != 'State-Wide') %>% 
   transmute(system_name,
             prop_white = race_white/total, 
             prop_black = race_black/total, 
             prop_hisp = ethnic_hispanic/total, 
             prop_non_white = 1 - prop_white,
-            total
+            total, 
+            frl = kk_12_percent_frl
             ) %>% 
   mutate(prop_non_white = 
            if_else(is.na(prop_non_white), 
                    prop_black,  
                    # there is one district for which this is an issue
                    # International Academy of Smyrna
-                   prop_non_white))
+                   prop_non_white)) 
+
+# disaggregated
+disagg_prop <-
+  disc_action %>%
+  left_join(race_gen) %>%
+  mutate(harsh =
+           out_of_school_suspension_oss +
+           juvenile_court_referral +
+           physical_restraint +
+           corporal_punishment +
+           permanent_expulsion +
+           in_school_suspension_iss,
+         harsh = harsh/total,
+         total, 
+         district = factor(system_name)
+         ) %>%
+  select(school_name,
+         district,
+         contains('frl'),
+         contains('prop'),
+         harsh,
+         total
+         )
 
 
 #aggregated and proportions
@@ -109,8 +141,21 @@ agg_disc_prop <-
          corporal_punishment = corporal_punishment/total, 
          detention = detention/total, 
          permanent_expulsion = permanent_expulsion/total, 
-         iss = iss/total) %>% 
-  select(-system_name) 
+         harsh = harsh/total) 
+```
+
+
+```{r}
+agg_disc_prop_complete <- agg_disc_prop %>% 
+  select(prop_hisp, prop_black, harsh, district, frl) %>% 
+  mice::mice(seed = 022021, print = F) %>% 
+  mice::complete()
+
+disagg_prop_complete <- disagg_prop %>% 
+  select(prop_hisp, prop_black, harsh, district, frl) %>% 
+  mice::mice(seed = 022021, print = F) %>% 
+  mice::complete()
+
 ```
 
 ```{r, include = F}
@@ -282,7 +327,7 @@ GA_sf <-
   mutate(oss_qt = ntile(oss, 5), 
          pnw_qt = ntile(prop_non_white, 5),
          oss_3 = ntile(oss, 3), 
-         pnw_qt = ntile(prop_non_white, 3))
+         pnw_3 = ntile(prop_non_white, 3))
 ```
 
 ```{r}
@@ -306,7 +351,37 @@ oss_map <-
 
 
 ```{r}
+# bivariate plot
 
+pal <- 
+  GA_sf %>% 
+  select(ends_with('_3')) %>% 
+  count(oss_3, pnw_3) %>% 
+  arrange(oss_3, pnw_3) %>% 
+  drop_na(oss_3, pnw_3) %>% 
+  mutate(pal = c("#F3F3F3", "#C3F1D5", "#8BE3AF",
+                 "#EBC5DD", "#C3C5D5", "#8BC5AF",
+                 "#E7A3D1", "#C3A3D1", "#8BA3AE"))
+
+bivar_map <- st_join(GA_sf, pal) %>% 
+  ggplot() + 
+  geom_sf(aes(fill = pal, color = pal)) +
+  guides(fill = "none", color = "none") +
+  scale_fill_identity() +
+  scale_color_identity()
+
+leg <- ggplot(pal, aes(oss_3, pnw_3)) +
+  geom_tile(aes(fill = pal)) +
+  scale_fill_identity() +
+  coord_fixed() +
+  labs(x = expression("OSS/Student" %->% ""),
+       y = expression("Prop Non-White" %->% "")) +
+  theme(axis.text = element_blank(),
+        axis.title = element_text(size = 12))
+
+ggdraw() +
+  draw_plot(bivar_map + theme_void(), 0.1, 0.1, 1, 1) +
+  draw_plot(leg, -0.05, 0, 0.3, 0.3)
 ```
 
 General
@@ -447,111 +522,190 @@ percent_change %>%
 # fill = kk_12_percent_frl
 ```
 
-Teachers & Admin
+School Admin
 ===
 
 ```{r}
-#gotta figure out what to put here
 oss_map
 ```
 
+```{r}
+# bivariate plot
+ggdraw() +
+  draw_plot(bivar_map + theme_void(), 0.1, 0.1, 1, 1) +
+  draw_plot(leg, -0.05, 0, 0.3, 0.3)
+```
 
 Researchers
 ===
 
 ```{r, eval = F}
-lm0 <- lm(data = complete_grad_dat,
-          formula = graduation_rate ~ 1)
-lm1 <- lm(data = complete_grad_dat,
-          formula = graduation_rate ~ kk_12_percent_frl)
-lm2 <- lm(data = complete_grad_dat,
-          formula = graduation_rate ~ oss_adj)
-lm3 <- lm(data = complete_grad_dat,
-          formula = graduation_rate ~ prop_non_white)
-lm4 <- lm(data = complete_grad_dat,
-          formula = graduation_rate ~ prop_non_white + kk_12_percent_frl + oss_adj)
-lm5 <- lm(data = complete_grad_dat,
-          formula = graduation_rate ~ prop_non_white*kk_12_percent_frl + oss_adj)
-lm6 <- lm(data = complete_grad_dat,
-          formula = graduation_rate ~ prop_non_white*kk_12_percent_frl)
 
-lm7 <- lm(data = complete_grad_dat,
-          formula = graduation_rate ~ prop_non_white*oss_adj + prop_non_white*kk_12_percent_frl)
+lm1 <- lm(data = agg_disc_prop_complete, 
+   formula = harsh ~ prop_black + prop_hisp + frl)
+summary(lm1)
+
+lm2 <- lm(data = disagg_prop_complete, 
+   formula = harsh ~ prop_black + prop_hisp + frl)
+summary(lm2)
+
+lmer1 <- lmer(data = disagg_prop_complete, 
+   formula = harsh ~ prop_black + prop_hisp + frl + (1 | district))
+summary(lmer1)  
+
+agg_disc_prop_complete %>% 
+  mutate(lm1 = predict(lm1)) %>% 
+  ggplot(aes(x = lm1, y = harsh)) + 
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + 
+  lims(x = c(0, .3), y = c(0, .3))
 
 
+disagg_prop_complete %>% 
+  mutate(lm2 = predict(lm2)) %>% 
+  ggplot(aes(x = lm2, y = harsh)) + 
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1) + 
+  lims(x = c(0, .3), y = c(0, .3))
 
-# summary(lm0)
-# summary(lm1)
-# summary(lm2)
-# summary(lm3)
-# summary(lm4)
-# summary(lm5)
-# summary(lm6)
+disagg_prop_complete %>% 
+  mutate(lmer1 = predict(lmer1)) %>% 
+  ggplot(aes(x = lmer1, y = harsh)) + 
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1) + 
+  lims(x = c(0, .3), y = c(0, .3))
+
+# 
+# lm <- lm(harsh_ps ~
+#            1, 
+#          data = disagg_prop_complete)
+# lm_full <- lm(harsh_ps ~ 
+#          total +
+#          prop_white + 
+#          prop_black + 
+#          prop_hisp + 
+#          frl, 
+#          data = disagg_prop_complete)
+# 
+# lmer0 <- 
+#   lmer(harsh_ps ~ 
+#          1 + (1 | system_name), 
+#        data = disagg_prop_complete, 
+#        REML = F) 
+# #summary(lmer0)
+# 
+# 
+# lmer1 <- 
+#   lmer(harsh_ps ~ 
+#          total +
+#          (1 | system_name), 
+#        data = disagg_prop_complete, 
+#        REML = F) 
+# #summary(lmer1)
+# 
+# lmer2 <- 
+#   lmer(harsh_ps ~ 
+#          total + 
+#          prop_white + 
+#          prop_black + 
+#          prop_hisp + 
+#          (1 | system_name), 
+#        data = disagg_prop_complete, 
+#        REML = F) 
+# #summary(lmer2)
+# 
+# lmer3 <- 
+#   lmer(harsh_ps ~ 
+#          total +
+#          prop_white + 
+#          prop_black + 
+#          prop_hisp + 
+#          frl + 
+#          (1 | system_name), 
+#        data = disagg_prop_complete, 
+#        REML = F) 
+#summary(lmer3)
+
+# anova(lmer0, lmer1)
+# anova(lmer1, lmer2)
+# anova(lmer2, lmer3)
 ```
 
-```{r, include = F}
-# can show that there is an appearance of mediation if we don't take into account direct effect of race
-# library(lavaan)
-# 
-# mod <-
-# '
-# graduation_rate ~ b*oss_adj
-# oss_adj ~ a*prop_non_white
-# 
-# c:= a*b
-# '
-# fit <- cfa(mod, data = complete_grad_dat, 'MLR')
-# summary(fit, stand = T, fit = T)
+```{r}
+plot_dat <- 
+  disagg_prop_complete %>% 
+  mutate(lm1 = predict(lm1), 
+         lm2 = predict(lm2), 
+         lmer1 = predict(lmer1)) %>% 
+  # mutate(lm = predict(lm), 
+  #        lm_full = predict(lm_full),
+  #   lmer0_pred = predict(lmer0), 
+  #        lmer1_pred = predict(lmer1), 
+  #        lmer2_pred = predict(lmer2), 
+  #        lmer3_pred = predict(lmer3)) %>% 
+  pivot_longer(lm1:lmer1, 
+              names_to = 'model', 
+              values_to = 'predicted')
 ```
 
+```{r}
+plot_dat %>% 
+  ggplot(aes(x = harsh_ps, 
+             y = predicted, 
+             color = model)) +
+  geom_point(alpha = 0.4) +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_wrap(~model) + 
+  coord_fixed()
+```
 
 ```{r, eval = F}
-t1 <-tibble(.rows = 129)
+#t1 <-tibble(.rows = 1924)
 t2 <-tibble(.rows = 1)
-t3 <- tibble(.rows = 1)
+#t3 <- tibble(.rows = 1)
 
-for (i in list(lm0, lm1, lm2, lm3, lm4, lm5, lm6)){
-  next_pred <- tibble(predict(i), .rows = 129)
-  next_resid <<-tibble(sqrt(mean(i$residuals^2)), .rows = 1)
-  next_rsq <- tibble(summary(i)$r.square, .rows = 1)
-  t1 <<- cbind(t1, next_pred) 
+#for (i in list(lm, lm_full, lmer0, lmer1, lmer2, lmer3)){
+for (i in list(lm1, lm2, lmer1)){
+  #next_pred <- tibble(predict(i), .rows = 1924)
+  next_resid <<-tibble(sqrt(mean(residuals(i)^2)), .rows = 1)
+  #next_rsq <- tibble(summary(i)$r.square, .rows = 1)
+  #t1 <<- cbind(t1, next_pred) 
   t2 <<- cbind(t2, next_resid) 
-  t3 <<- cbind(t3, next_rsq) 
+  #t3 <<- cbind(t3, next_rsq) 
 }
 columns <- 
-  list('lm0',
-       'lm1',
-       'lm2',
-       'lm3',
-       'lm4',
-       'lm5',
-       'lm6')
+  list('lm1', 'lm2', 'lmer1')
+  # list('lm',
+  #      'lm_full',
+  #      'lmer0',
+  #      'lmer1',
+  #      'lmer2',
+  #      'lmer3')
 
-colnames(t1) <- columns
+#colnames(t1) <- columns
 colnames(t2) <- columns
-colnames(t3) <- columns
+#colnames(t3) <- columns
 
 t2_long <- 
   t2 %>% 
-  pivot_longer('lm0':'lm6', 
+  pivot_longer('lm1':'lmer1', 
                names_to = 'model',
                values_to = 'rmse')
 
-t3_long <- 
-  t3 %>% 
-  pivot_longer('lm0':'lm6', 
-               names_to = 'model',
-               values_to = 'rsq')
+# t3_long <- 
+#   t3 %>% 
+#   pivot_longer('lm':'lmer3',
+#                names_to = 'model',
+#                values_to = 'rsq')
 
-fit_stats <- 
-  left_join(t2_long, t3_long, by = 'model') %>% 
-  mutate(model = factor(model, levels = columns, 
-                        labels = c('Intercept-Only', 
-                                   'Proportion FRL', 
-                                   'OSS/Student',
-                                   'Proportion Non-White',
-                                   'Three Predictor', 
-                                   'Three Predictor & Interaction', 
-                                   'Parsimoneous'))) 
+fit_stats <- t2_long #%>% 
+  #left_join(t2_long, t3_long, by = 'model') %>% 
+ # mutate(model = factor(model, levels = columns, 
+                        # labels = c('intercept lm', 
+                        #            'large lm', 
+                        #            'intercept lmer',
+                        #            'school size lmer',
+                        #            'size + race/eth lmer', 
+                        #            'size + race/eth + frl lmer'))) 
 fit_stats
 ```
