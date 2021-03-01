@@ -5,7 +5,7 @@ output:
     orientation: columns
     vertical_layout: fill
     social: menu
-    source_code: https://chhr1s.github.io/GA_DOE_Public/docs/index.html
+    source_code: https://chhr1s.github.io/GA_DOE_Public/docs/index.html/
 ---
 
 ```{r setup, include=FALSE}
@@ -132,7 +132,7 @@ grad <- import(here("Data", "4-Year Cohort Graduation Rate State District School
 #    clean_names() %>%
 #   count(graduation_class_size) %>% arrange(desc(n))
 
-grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
+#grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
 ```
 
 ```{r, include = F}
@@ -141,14 +141,6 @@ grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "sch
 #   select(graduation_rate, oss_adj, contains('prop'), kk_12_percent_frl, school_name, fac_schtype, system_name) %>% 
 #   drop_na()
 ```
-
-General
-===
-
-Column {data-width=650}
------------------------------------------------------------------------
-
-### General
 
 
 ```{r without_labs, include = F}
@@ -201,7 +193,8 @@ Non-White') +
                        direction = 1)
 ```
 
-```{r}
+```{r, echo = F}
+# General Plot
 labeled_plot <- 
   general_plot + 
   geom_label(inherit.aes = F, 
@@ -231,17 +224,30 @@ labeled_plot <-
   geom_label(inherit.aes = F, 
             x = 0.225, 
             y = -55, 
-            label = 'Average OSS\nwithin block', 
+            label = 'Average OSS\nPer Student\nwithin block', 
             fill = 'coral') #+
   # scale_color_distiller(palette = 
   #                        'Blues', 
   #                      type = 'seq', 
   #                      direction = 1)
-
-labeled_plot 
 ```
 
+```{r, echo = F}
+summary <- agg_disc_prop %>% 
+  filter(!is.na(district) & !is.na(oss) & !is.na(prop_non_white)) %>% 
+  mutate(`Quintile Proportion non-White` = ntile(prop_non_white, 5)) %>% 
+  group_by(`Quintile Proportion non-White`) %>% 
+  summarize(`Average OSS/Student` = mean(oss))
+
+comparison <- summary$`Average OSS/Student`[1]
+
+percent_change <- summary %>% mutate(`Percent Change from 1st` = 
+                     (`Average OSS/Student` - comparison)/comparison*100)
+```
+
+
 ```{r, eval = T, include = F}
+# Geographic Data (Teachers & Admin Page)
 GA_sf <- 
   lea_get(state = 'GA') %>% 
   st_as_sf() %>% 
@@ -272,7 +278,9 @@ GA_sf <-
 GA_sf <- 
   GA_sf %>% 
   mutate(oss_qt = ntile(oss, 5), 
-         pnw_qt = ntile(prop_non_white, 5), )
+         pnw_qt = ntile(prop_non_white, 5),
+         oss_3 = ntile(oss, 3), 
+         pnw_qt = ntile(prop_non_white, 3))
 ```
 
 ```{r}
@@ -294,6 +302,24 @@ oss_map <-
 
 ```
 
+
+```{r}
+
+```
+
+General
+===
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### General
+
+
+
+```{r}
+labeled_plot 
+```
 
 ```{r, eval = F}
 par(mfrow=c(1,2))
@@ -388,7 +414,7 @@ Column {data-width=350}
 ### Chart B
 
 ```{r}
-oss_map
+percent_change
 ```
 
 
@@ -422,6 +448,7 @@ Teachers & Admin
 
 ```{r}
 #gotta figure out what to put here
+oss_map
 ```
 
 
