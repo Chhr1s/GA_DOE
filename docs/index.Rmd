@@ -159,6 +159,7 @@ disagg_prop_complete <- disagg_prop %>%
 ```
 
 ```{r without_labs, include = F}
+#The main problem here seems to be with the scaling of the graph to fit the title and other descriptions. I'd also add theme_minimal to get rid of the gray sides, and maybe accentuate the hue difference for the orange boxes.
 ## add some text explaining these
 background <- agg_disc_prop_complete %>%
   filter(!is.na(district) & !is.na(harsh) & !is.na(prop_black)) %>%
@@ -244,6 +245,7 @@ labeled_plot <-
 ```
 
 ```{r, echo = F}
+#I'm not sure exactly how this relates to the first plot, so some description here would be realyl helpful! Perhaps that could go in the empty Chart C space.
 summary <- agg_disc_prop_complete %>% 
   #filter(!is.na(district) & !is.na(harsh) & !is.na(prop_black)) %>% 
   mutate(`Quintile of Proportion Black Students` = ntile(prop_black, 5)) %>% 
@@ -258,6 +260,8 @@ percent_change <- summary %>%
 ```
 
 ```{r, eval = T, include = F}
+#Love the state graph! If possible, it would be cool to make this interactive, so that there was only one graph and you could toggle between the different display options! 
+
 # Geographic Data (Teachers & Admin Page)
 GA_sf <- 
   lea_get(state = 'GA') %>% 
