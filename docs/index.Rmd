@@ -160,35 +160,35 @@ disagg_prop_complete <- disagg_prop %>%
 
 ```{r without_labs, include = F}
 ## add some text explaining these
-background <- agg_disc_prop %>% 
-  filter(!is.na(district) & !is.na(oss) & !is.na(prop_non_white)) %>% 
-  group_by(oss < 0.05, 
-           oss < 0.10 & oss >= 0.05, 
-           oss < 0.15 & oss >= 0.10, 
-           oss < 0.20 & oss >= 0.15,
-           oss < 0.25 & oss >= 0.20,
-           oss >= 0.25
-           ) %>% 
-  summarize(average_nw_prop = mean(prop_non_white), 
-            average_oss = mean(oss)) %>% 
-  ungroup() %>% 
-  select(average_nw_prop, average_oss) %>% 
-  mutate(xmin = rev(c(0, 0.05, 0.10, 0.15, 0.20)), 
+background <- agg_disc_prop_complete %>%
+  filter(!is.na(district) & !is.na(harsh) & !is.na(prop_black)) %>%
+  group_by(harsh < 0.05,
+           harsh < 0.10 & harsh >= 0.05,
+           harsh < 0.15 & harsh >= 0.10,
+           harsh < 0.20 & harsh >= 0.15,
+           harsh < 0.25 & harsh >= 0.20,
+           harsh >= 0.25
+           ) %>%
+  summarize(average_prop_black = mean(prop_black),
+            average_harsh = mean(harsh)) %>%
+  ungroup() %>%
+  select(average_prop_black, average_harsh) %>%
+  mutate(xmin = rev(c(0, 0.05, 0.10, 0.15, 0.20)),
          xmax = rev(c(0.049, 0.099, 0.149, 0.199, 0.251))
          )
 general_plot <- 
-agg_disc_prop %>% 
-  filter(!is.na(district) & !is.na(oss)) %>% 
+agg_disc_prop_complete %>% 
+  #filter(!is.na(district) & !is.na(oss)) %>% 
   ggplot() + 
    geom_rect(inherit.aes = F,
-            data = background, 
-            aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf, 
-                fill = average_nw_prop), 
+            data = background,
+            aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf,
+                fill = average_prop_black),
             alpha = 0.9) +
   geom_col(inherit.aes = F,
-           aes(y = fct_reorder(district, oss), 
-             x = oss,
-             fill = prop_non_white), color = 'gray30', size = 0.1, alpha = 0.8) + 
+           aes(y = fct_reorder(district, harsh), 
+             x = harsh,
+             fill = prop_black), color = 'gray30', size = 0.1, alpha = 0.8) + 
   theme(axis.text.y = element_blank(), 
         plot.title.position = 'plot', 
         axis.ticks.y = element_blank(), 
@@ -198,10 +198,10 @@ agg_disc_prop %>%
         legend.position = 'bottom'
         ) + 
   labs(y = 'Individual Districts', 
-       x = 'District Average OSS per Student', 
-       title = 'District Averages of Out of School Suspensions per Student by Proportion Non-White', 
+       x = 'District Average Harsh Punishments Per Student', 
+       title = 'District Averages of Harsh Punishments per Student by Proportion of Black Students in District', 
        fill = 'Proportion
-Non-White') +
+Black Students Per District') +
   scale_fill_distiller(palette = 
                          'Blues', 
                        type = 'seq', 
@@ -215,7 +215,7 @@ labeled_plot <-
   geom_label(inherit.aes = F, 
              show.legend = F,
              data = background, aes(
-             label = round(average_nw_prop, 2),
+             label = round(average_prop_black, 2),
              x = xmin + 0.025, 
              y = rep(20, 5), 
              #color = average_nw_prop
@@ -224,7 +224,7 @@ labeled_plot <-
   geom_label(inherit.aes = F, 
              show.legend = F,
              data = background, aes(
-             label = round(average_oss, 2),
+             label = round(average_harsh, 2),
              x = xmin + 0.025, 
              y = rep(40, 5),
              #color = average_oss
@@ -234,31 +234,27 @@ labeled_plot <-
   geom_label(inherit.aes = F, 
             x = 0.025, 
             y = -55, 
-            label = 'Avg. Proportion\nNon-White\nwithin block', 
+            label = 'Avg. Proportion\nBlack Students\nwithin block', 
             fill = 'coral3') + 
   geom_label(inherit.aes = F, 
             x = 0.225, 
             y = -55, 
-            label = 'Average OSS\nPer Student\nwithin block', 
-            fill = 'coral') #+
-  # scale_color_distiller(palette = 
-  #                        'Blues', 
-  #                      type = 'seq', 
-  #                      direction = 1)
+            label = 'Avg. Harsh Punishments\nPer Student\nwithin block', 
+            fill = 'coral')
 ```
 
 ```{r, echo = F}
-summary <- agg_disc_prop %>% 
-  filter(!is.na(district) & !is.na(oss) & !is.na(prop_non_white)) %>% 
-  mutate(`Quintile non-White` = ntile(prop_non_white, 5)) %>% 
-  group_by(`Quintile non-White`) %>% 
-  summarize(`Average OSS/Student` = mean(oss))
+summary <- agg_disc_prop_complete %>% 
+  #filter(!is.na(district) & !is.na(harsh) & !is.na(prop_black)) %>% 
+  mutate(`Quintile of Proportion Black Students` = ntile(prop_black, 5)) %>% 
+  group_by(`Quintile of Proportion Black Students`) %>% 
+  summarize(`Average Harsh Punishments/Student` = mean(harsh))
 
-comparison <- summary$`Average OSS/Student`[1]
+comparison <- summary$`Average Harsh Punishments/Student`[1]
 
 percent_change <- summary %>% 
   mutate(`% Increase from 1st` = 
-                     (`Average OSS/Student` - comparison)/comparison*100)
+                     (`Average Harsh Punishments/Student`- comparison)/comparison*100)
 ```
 
 ```{r, eval = T, include = F}
@@ -284,11 +280,6 @@ GA_sf <-
   GA_sf %>% left_join(agg_disc_prop_complete) # didn't use imputed data before
 ```
 
-```{r, include = F}
-#GA_sf <- GA_sf %>% left_join(oss)
-#grad_plot <- GA_sf %>% left_join(complete_grad_dat, by = c('system_name'))
-```
-
 ```{r}
 GA_sf <- 
   GA_sf %>% 
@@ -312,78 +303,86 @@ harsh_map <-
               palette = 'Blues', 
               title = 'Quintiles',
               legend.hist = F)  + 
-  tm_facets(sync = F, ncol = 2) + 
+  tm_facets(sync = F, ncol = 3) + 
   tm_layout(legend.outside = T, 
             panel.labels = c("harsh punishments per Student", "Prop. Black", 'Prop. FRL'))
-harsh_map
 ```
 
 
-```{r}
-# bivariate plot
+```{r eval = F, include = F}
 
-pal_1 <- 
-  GA_sf %>% 
-  select(ends_with('_3')) %>% 
-  count(black_3, harsh_3) %>% 
-  arrange(black_3, harsh_3) %>% 
-  drop_na(black_3, harsh_3) %>% 
-  mutate(pal = c("#F3F3F3", "#C3F1D5", "#8BE3AF",
-                 "#EBC5DD", "#C3C5D5", "#8BC5AF",
-                 "#E7A3D1", "#C3A3D1", "#8BA3AE"))
+### PEER REVIEWS CAN IGNORE THESE ###
 
-bivar_map_1 <- st_join(GA_sf, pal_1) %>% 
-  ggplot() + 
-  geom_sf(aes(fill = pal_1, color = pal_1)) +
-  guides(fill = "none", color = "none") +
-  scale_fill_identity() +
-  scale_color_identity()
+## these are harder to parse than the tmap plots
+## bivariate 1
 
-leg_1 <- ggplot(pal_1, aes(black_3, harsh_3)) +
-  geom_tile(aes(fill = pal_1)) +
-  scale_fill_identity() +
-  coord_fixed() +
-  labs(x = expression("Prop Black Student" %->% ""),
-       y = expression("Harsh Punish./Student" %->% "")) +
-  theme(axis.text = element_blank(),
-        axis.title = element_text(size = 12))
-
-ggdraw() +
-  draw_plot(bivar_map_1 + theme_void(), 0.1, 0.1, 1, 1) +
-  draw_plot(leg_1, -0.05, 0, 0.3, 0.3)
+# pal_1 <- 
+#   GA_sf %>% 
+#   select(ends_with('_3')) %>% 
+#   count(black_3, harsh_3) %>% 
+#   arrange(black_3, harsh_3) %>% 
+#   drop_na(black_3, harsh_3) %>% 
+#   mutate(pal = c("#F3F3F3", "#C3F1D5", "#8BE3AF",
+#                  "#EBC5DD", "#C3C5D5", "#8BC5AF",
+#                  "#E7A3D1", "#C3A3D1", "#8BA3AE"))
+# 
+# bivar_map_1 <- st_join(GA_sf, pal_1) %>% 
+#   ggplot() + 
+#   geom_sf(aes(fill = pal_1, color = pal_1)) +
+#   guides(fill = "none", color = "none") +
+#   scale_fill_identity() +
+#   scale_color_identity()
+# 
+# leg_1 <- ggplot(pal_1, aes(black_3, harsh_3)) +
+#   geom_tile(aes(fill = pal_1)) +
+#   scale_fill_identity() +
+#   coord_fixed() +
+#   labs(x = expression("Prop Black Student" %->% ""),
+#        y = expression("Harsh Punish./Student" %->% "")) +
+#   theme(axis.text = element_blank(),
+#         axis.title = element_text(size = 12))
+# 
+# ggdraw() +
+#   draw_plot(bivar_map_1 + theme_void(), 0.1, 0.1, 1, 1) +
+#   draw_plot(leg_1, -0.05, 0, 0.3, 0.3)
 
 ```
 
-```{r}
-pal_2 <- 
-  GA_sf %>% 
-  select(ends_with('_3')) %>% 
-  count(frl_3, harsh_3) %>% 
-  arrange(frl_3, harsh_3) %>% 
-  drop_na(frl_3, harsh_3) %>% 
-  mutate(pal = c("#F3F3F3", "#C3F1D5", "#8BE3AF",
-                 "#EBC5DD", "#C3C5D5", "#8BC5AF",
-                 "#E7A3D1", "#C3A3D1", "#8BA3AE"))
+```{r eval = F, include = F}
 
-bivar_map_2 <- st_join(GA_sf, pal_2) %>% 
-  ggplot() + 
-  geom_sf(aes(fill = pal_2, color = pal_2)) +
-  guides(fill = "none", color = "none") +
-  scale_fill_identity() +
-  scale_color_identity()
+### PEER REVIEWS CAN IGNORE THESE ###
 
-leg_2 <- ggplot(pal_2, aes(frl_3, harsh_3)) +
-  geom_tile(aes(fill = pal_2)) +
-  scale_fill_identity() +
-  coord_fixed() +
-  labs(x = expression("Prop. FRL" %->% ""),
-       y = expression("Harsh Punish./Student" %->% "")) +
-  theme(axis.text = element_blank(),
-        axis.title = element_text(size = 12))
+## these are harder to parse than the tmap plots
 
-ggdraw() +
-  draw_plot(bivar_map_2 + theme_void(), 0.1, 0.1, 1, 1) +
-  draw_plot(leg_2, -0.05, 0, 0.3, 0.3)
+# pal_2 <- 
+#   GA_sf %>% 
+#   select(ends_with('_3')) %>% 
+#   count(frl_3, harsh_3) %>% 
+#   arrange(frl_3, harsh_3) %>% 
+#   drop_na(frl_3, harsh_3) %>% 
+#   mutate(pal = c("#F3F3F3", "#C3F1D5", "#8BE3AF",
+#                  "#EBC5DD", "#C3C5D5", "#8BC5AF",
+#                  "#E7A3D1", "#C3A3D1", "#8BA3AE"))
+# 
+# bivar_map_2 <- st_join(GA_sf, pal_2) %>% 
+#   ggplot() + 
+#   geom_sf(aes(fill = pal_2, color = pal_2)) +
+#   guides(fill = "none", color = "none") +
+#   scale_fill_identity() +
+#   scale_color_identity()
+# 
+# leg_2 <- ggplot(pal_2, aes(frl_3, harsh_3)) +
+#   geom_tile(aes(fill = pal_2)) +
+#   scale_fill_identity() +
+#   coord_fixed() +
+#   labs(x = expression("Prop. FRL" %->% ""),
+#        y = expression("Harsh Punish./Student" %->% "")) +
+#   theme(axis.text = element_blank(),
+#         axis.title = element_text(size = 12))
+# 
+# ggdraw() +
+#   draw_plot(bivar_map_2 + theme_void(), 0.1, 0.1, 1, 1) +
+#   draw_plot(leg_2, -0.05, 0, 0.3, 0.3)
 
 ```
 
@@ -395,98 +394,10 @@ Column {data-width=650}
 
 ### General
 
-
-
 ```{r}
 labeled_plot 
 ```
 
-```{r, eval = F}
-par(mfrow=c(1,2))
-
-tm_shape(hs_oss) + tm_polygons('average_oss')
-
-tm_shape(hs_oss) + tm_polygons('average_prop_non_white')
-```
-
-```{r, eval = F}
-par(mfrow=c(1,2))
-
-tm_shape(grad_plot) + tm_polygons('graduation_rate')
-```
-
-```{r, eval = F}
-disc_demo %>% 
-  filter(fac_schtype %in% c('M', 'H')) %>% 
-  group_by(system_name, fac_schtype) %>% 
-  summarize(mean_oss_adj = mean(oss_adj),
-            se = sd(oss_adj)/sqrt(n()), 
-            mean_prop_non_white = mean(prop_non_white)) %>% 
-  ungroup() %>% 
-  #filter(mean_oss_adj > 0.2) %>% 
-  #summarize(mean_oss = mean(out_of_school_suspension_oss), 
-  #          se = sd(out_of_school_suspension_oss)/sqrt(n())) %>% 
-  ggplot(aes(x = mean_oss_adj, 
-             y = fct_reorder(system_name, mean_oss_adj), 
-             color = fac_schtype, 
-             size = mean_prop_non_white)) + 
-  geom_point(alpha = 0.5) +
-  facet_wrap(~fac_schtype) +
-  theme_minimal() +
-  labs(y = NULL, 
-       x = 'Out of School Suspensions per Student', 
-       title = 'Average OSS Rate for Georgian Middle and High Schools in each District'
-       ) +
-  theme(plot.title.position = 'plot', 
-        axis.text.y = element_blank())
-```
-
-```{r, eval = F}
-disc_demo %>% 
-  group_by(fac_schtype) %>% 
-  summarize(mean_oss_adj = mean(oss_adj)) %>% 
-  ggplot(aes(x = mean_oss_adj, 
-             y = fct_reorder(fac_schtype, mean_oss_adj), 
-             fill = fac_schtype)) + 
-  geom_col(show.legend = F,
-           alpha = 0.75) + 
-  theme_minimal() +
-  labs(x = 'Average OSS/student', 
-       y = 'School Type', 
-       title = 'Average Out of School Suspension per Student by School Type') + 
-  scale_fill_viridis_d()
-```
-
-```{r, eval = F}
-# are quartiles clean/interprettable? 
-# add geom_label()
-disc_demo <- disc_demo %>% 
-  filter(fac_schtype != 'K12') %>% 
-  mutate(quartiles = ntile(prop_non_white, 4), 
-         tenths = ntile(prop_non_white, 10), 
-         hundreds = ntile(prop_non_white, 100))
-
-disc_demo %>% 
-  filter(fac_schtype != 'K12') %>% 
-  group_by(fac_schtype, quartiles) %>% 
-  mutate(mean_oss_adj = mean(oss_adj)) %>% 
-  ggplot(aes(fill = mean_oss_adj, 
-             y = fct_reorder(fac_schtype, mean_oss_adj),
-             x = quartiles, 
-             group = fac_schtype)) + 
-  geom_tile(color = 'white') +
-  coord_fixed() +
-  theme_minimal() + 
-  scale_fill_continuous(#name = 'Proportion',
-                        type = 'viridis') + 
-  theme(legend.position = 'bottom', 
-        plot.title.position = 'plot') +
-  labs(y = 'School Type',
-       x = 'Quartiles of Proportion Non-White', 
-       color = 'Average OSS/Student', 
-       title = 'Heatmap of Average OSS/Student by School Type 
-       and Quartile of Proportion Non-White') 
-```
 
 Column {data-width=350}
 -----------------------------------------------------------------------
@@ -502,43 +413,15 @@ percent_change %>%
   )
 ```
 
-```{r}
-# GA_sf %>%
-#   ggplot() +
-#   geom_sf(aes(geometry = geometry)) 
-#print(GA_sf)
-```
-
-```{r}
-#ggplot(data = mtcars, aes(x = disp, y = mpg)) + geom_point()
-
-#quartz()
-# GA_sf %>%
-#   #select(geometry, kk_12_percent_frl) %>% 
-#   ggplot() +
-#   geom_sf(aes(fill = kk_12_percent_frl))
-```
-
 ### Chart C
 
-```{r}
-# fill = kk_12_percent_frl
-```
 
 School Admin
 ===
 
 ```{r}
-oss_map
+harsh_map
 ```
-
-```{r}
-# bivariate plot
-ggdraw() +
-  draw_plot(bivar_map + theme_void(), 0.1, 0.1, 1, 1) +
-  draw_plot(leg, -0.05, 0, 0.3, 0.3)
-```
-
 Researchers
 ===
 
