@@ -409,7 +409,7 @@ percent_change %>%
   round(digits = 3) %>% 
   gt() %>% 
   tab_header(
-    title = 'Average Out of School Suspension Per Student by Quintile Proportion non-White',
+    title = '',
   )
 ```
 
