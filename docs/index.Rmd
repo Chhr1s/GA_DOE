@@ -145,7 +145,7 @@ agg_disc_prop <-
 ```
 
 
-```{r}
+```{r, include = F}
 agg_disc_prop_complete <- agg_disc_prop %>% 
   select(prop_hisp, prop_black, harsh, district, frl) %>% 
   mice::mice(seed = 022021, print = F) %>% 
@@ -157,37 +157,6 @@ disagg_prop_complete <- disagg_prop %>%
   mice::complete()
 
 ```
-
-```{r, include = F}
-grad <- import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>% # technically a 4 year graduation rate
-  clean_names() %>%
-  # we're filtering people out here, based on having enough people to graduate
-  filter(graduation_class_size != 'Too Few Students' & reporting_level == 'School') %>%
-  select(-reporting_label, -reporting_level) %>%
-  mutate(school_id = factor(school_id),
-         system_id = factor(system_id),
-         system_name = factor(system_name),
-         school_name = factor(school_name),
-         graduation_class_size = as.double(graduation_class_size),
-         total_graduated = as.double(total_graduated),
-         graduation_rate = as.double(graduation_rate)
-         ) %>%
-  drop_na()
-
-# import(here("Data", "4-Year Cohort Graduation Rate State District School by Subgroups 11_10_20.xlsx")) %>%
-#    clean_names() %>%
-#   count(graduation_class_size) %>% arrange(desc(n))
-
-#grad_demo <- inner_join(demo_dat, grad,  by = c("system_id", "system_name", "school_id", "school_name"))
-```
-
-```{r, include = F}
-# complete_grad_dat <- left_join(grad_demo, disc_demo) %>% 
-#   filter(graduation_rate > 0) %>% 
-#   select(graduation_rate, oss_adj, contains('prop'), kk_12_percent_frl, school_name, fac_schtype, system_name) %>% 
-#   drop_na()
-```
-
 
 ```{r without_labs, include = F}
 ## add some text explaining these
@@ -292,7 +261,6 @@ percent_change <- summary %>%
                      (`Average OSS/Student` - comparison)/comparison*100)
 ```
 
-
 ```{r, eval = T, include = F}
 # Geographic Data (Teachers & Admin Page)
 GA_sf <- 
@@ -313,7 +281,7 @@ GA_sf <-
 ```{r, eval = T, include = F}
 #disc_demo %>% filter(system_name == 'Macon County')
 GA_sf <- 
-  GA_sf %>% left_join(agg_disc_prop)
+  GA_sf %>% left_join(agg_disc_prop_complete) # didn't use imputed data before
 ```
 
 ```{r, include = F}
@@ -324,64 +292,99 @@ GA_sf <-
 ```{r}
 GA_sf <- 
   GA_sf %>% 
-  mutate(oss_qt = ntile(oss, 5), 
-         pnw_qt = ntile(prop_non_white, 5),
-         oss_3 = ntile(oss, 3), 
-         pnw_3 = ntile(prop_non_white, 3))
+  mutate(harsh_qt = ntile(harsh, 5), 
+         black_qt = ntile(prop_black, 5),
+         frl_qt = ntile(frl, 5), 
+         harsh_3 = ntile(harsh, 3), 
+         black_3 = ntile(prop_black, 3), 
+         frl_3 = ntile(frl, 3))
 ```
 
 ```{r}
-oss_map <- 
+harsh_map <- 
   tm_shape(GA_sf) +
-  tm_polygons(c('oss_qt', 'pnw_qt'),
+  tm_polygons(c('harsh_qt', 'black_qt', 'frl_qt'),
               labels = c('1st quintile',
                          '2nd quintile',
                          '3rd quintile',
                          '4th quintile',
-                         '5th quintile',
-                         'Missing'),
+                         '5th quintile'),
               palette = 'Blues', 
-              title = 'Quintiles', 
+              title = 'Quintiles',
               legend.hist = F)  + 
   tm_facets(sync = F, ncol = 2) + 
   tm_layout(legend.outside = T, 
-            panel.labels = c("OSS per Student", "Prop. Non-White"),)
-
+            panel.labels = c("harsh punishments per Student", "Prop. Black", 'Prop. FRL'))
+harsh_map
 ```
 
 
 ```{r}
 # bivariate plot
 
-pal <- 
+pal_1 <- 
   GA_sf %>% 
   select(ends_with('_3')) %>% 
-  count(oss_3, pnw_3) %>% 
-  arrange(oss_3, pnw_3) %>% 
-  drop_na(oss_3, pnw_3) %>% 
+  count(black_3, harsh_3) %>% 
+  arrange(black_3, harsh_3) %>% 
+  drop_na(black_3, harsh_3) %>% 
   mutate(pal = c("#F3F3F3", "#C3F1D5", "#8BE3AF",
                  "#EBC5DD", "#C3C5D5", "#8BC5AF",
                  "#E7A3D1", "#C3A3D1", "#8BA3AE"))
 
-bivar_map <- st_join(GA_sf, pal) %>% 
+bivar_map_1 <- st_join(GA_sf, pal_1) %>% 
   ggplot() + 
-  geom_sf(aes(fill = pal, color = pal)) +
+  geom_sf(aes(fill = pal_1, color = pal_1)) +
   guides(fill = "none", color = "none") +
   scale_fill_identity() +
   scale_color_identity()
 
-leg <- ggplot(pal, aes(oss_3, pnw_3)) +
-  geom_tile(aes(fill = pal)) +
+leg_1 <- ggplot(pal_1, aes(black_3, harsh_3)) +
+  geom_tile(aes(fill = pal_1)) +
   scale_fill_identity() +
   coord_fixed() +
-  labs(x = expression("OSS/Student" %->% ""),
-       y = expression("Prop Non-White" %->% "")) +
+  labs(x = expression("Prop Black Student" %->% ""),
+       y = expression("Harsh Punish./Student" %->% "")) +
   theme(axis.text = element_blank(),
         axis.title = element_text(size = 12))
 
 ggdraw() +
-  draw_plot(bivar_map + theme_void(), 0.1, 0.1, 1, 1) +
-  draw_plot(leg, -0.05, 0, 0.3, 0.3)
+  draw_plot(bivar_map_1 + theme_void(), 0.1, 0.1, 1, 1) +
+  draw_plot(leg_1, -0.05, 0, 0.3, 0.3)
+
+```
+
+```{r}
+pal_2 <- 
+  GA_sf %>% 
+  select(ends_with('_3')) %>% 
+  count(frl_3, harsh_3) %>% 
+  arrange(frl_3, harsh_3) %>% 
+  drop_na(frl_3, harsh_3) %>% 
+  mutate(pal = c("#F3F3F3", "#C3F1D5", "#8BE3AF",
+                 "#EBC5DD", "#C3C5D5", "#8BC5AF",
+                 "#E7A3D1", "#C3A3D1", "#8BA3AE"))
+
+bivar_map_2 <- st_join(GA_sf, pal_2) %>% 
+  ggplot() + 
+  geom_sf(aes(fill = pal_2, color = pal_2)) +
+  guides(fill = "none", color = "none") +
+  scale_fill_identity() +
+  scale_color_identity()
+
+leg_2 <- ggplot(pal_2, aes(frl_3, harsh_3)) +
+  geom_tile(aes(fill = pal_2)) +
+  scale_fill_identity() +
+  coord_fixed() +
+  labs(x = expression("Prop. FRL" %->% ""),
+       y = expression("Harsh Punish./Student" %->% "")) +
+  theme(axis.text = element_blank(),
+        axis.title = element_text(size = 12))
+
+ggdraw() +
+  draw_plot(bivar_map_2 + theme_void(), 0.1, 0.1, 1, 1) +
+  draw_plot(leg_2, -0.05, 0, 0.3, 0.3)
+
 ```
 
 General
