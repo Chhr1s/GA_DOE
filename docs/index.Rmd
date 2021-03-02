@@ -460,138 +460,28 @@ disagg_prop_complete %>%
   geom_point()+
   geom_abline(intercept = 0, slope = 1) + 
   lims(x = c(0, .3), y = c(0, .3))
-
-# 
-# lm <- lm(harsh_ps ~
-#            1, 
-#          data = disagg_prop_complete)
-# lm_full <- lm(harsh_ps ~ 
-#          total +
-#          prop_white + 
-#          prop_black + 
-#          prop_hisp + 
-#          frl, 
-#          data = disagg_prop_complete)
-# 
-# lmer0 <- 
-#   lmer(harsh_ps ~ 
-#          1 + (1 | system_name), 
-#        data = disagg_prop_complete, 
-#        REML = F) 
-# #summary(lmer0)
-# 
-# 
-# lmer1 <- 
-#   lmer(harsh_ps ~ 
-#          total +
-#          (1 | system_name), 
-#        data = disagg_prop_complete, 
-#        REML = F) 
-# #summary(lmer1)
-# 
-# lmer2 <- 
-#   lmer(harsh_ps ~ 
-#          total + 
-#          prop_white + 
-#          prop_black + 
-#          prop_hisp + 
-#          (1 | system_name), 
-#        data = disagg_prop_complete, 
-#        REML = F) 
-# #summary(lmer2)
-# 
-# lmer3 <- 
-#   lmer(harsh_ps ~ 
-#          total +
-#          prop_white + 
-#          prop_black + 
-#          prop_hisp + 
-#          frl + 
-#          (1 | system_name), 
-#        data = disagg_prop_complete, 
-#        REML = F) 
-#summary(lmer3)
-
-# anova(lmer0, lmer1)
-# anova(lmer1, lmer2)
-# anova(lmer2, lmer3)
-```
-
-```{r}
-plot_dat <- 
-  disagg_prop_complete %>% 
-  mutate(lm1 = predict(lm1), 
-         lm2 = predict(lm2), 
-         lmer1 = predict(lmer1)) %>% 
-  # mutate(lm = predict(lm), 
-  #        lm_full = predict(lm_full),
-  #   lmer0_pred = predict(lmer0), 
-  #        lmer1_pred = predict(lmer1), 
-  #        lmer2_pred = predict(lmer2), 
-  #        lmer3_pred = predict(lmer3)) %>% 
-  pivot_longer(lm1:lmer1, 
-              names_to = 'model', 
-              values_to = 'predicted')
-```
-
-```{r}
-plot_dat %>% 
-  ggplot(aes(x = harsh_ps, 
-             y = predicted, 
-             color = model)) +
-  geom_point(alpha = 0.4) +
-  geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~model) + 
-  coord_fixed()
 ```
 
 ```{r, eval = F}
-#t1 <-tibble(.rows = 1924)
-t2 <-tibble(.rows = 1)
-#t3 <- tibble(.rows = 1)
+t1 <-tibble(.rows = 1)
 
-#for (i in list(lm, lm_full, lmer0, lmer1, lmer2, lmer3)){
 for (i in list(lm1, lm2, lmer1)){
-  #next_pred <- tibble(predict(i), .rows = 1924)
   next_resid <<-tibble(sqrt(mean(residuals(i)^2)), .rows = 1)
-  #next_rsq <- tibble(summary(i)$r.square, .rows = 1)
-  #t1 <<- cbind(t1, next_pred) 
-  t2 <<- cbind(t2, next_resid) 
-  #t3 <<- cbind(t3, next_rsq) 
+  t1 <<- cbind(t1, next_resid) 
 }
 columns <- 
   list('lm1', 'lm2', 'lmer1')
-  # list('lm',
-  #      'lm_full',
-  #      'lmer0',
-  #      'lmer1',
-  #      'lmer2',
-  #      'lmer3')
 
-#colnames(t1) <- columns
-colnames(t2) <- columns
-#colnames(t3) <- columns
+colnames(t1) <- columns
 
-t2_long <- 
-  t2 %>% 
+rmse <- 
+  t1 %>% 
   pivot_longer('lm1':'lmer1', 
                names_to = 'model',
-               values_to = 'rmse')
-
-# t3_long <- 
-#   t3 %>% 
-#   pivot_longer('lm':'lmer3',
-#                names_to = 'model',
-#                values_to = 'rsq')
-
-fit_stats <- t2_long #%>% 
-  #left_join(t2_long, t3_long, by = 'model') %>% 
- # mutate(model = factor(model, levels = columns, 
-                        # labels = c('intercept lm', 
-                        #            'large lm', 
-                        #            'intercept lmer',
-                        #            'school size lmer',
-                        #            'size + race/eth lmer', 
-                        #            'size + race/eth + frl lmer'))) 
-fit_stats
+               values_to = 'rmse') %>% 
+  mutate(model = factor(model, levels = columns, 
+                        labels = c('simple linear model aggregated',
+                                   'simple linear model disaggregated',
+                                   'simple mixed-effects model')))
+rmse
 ```
