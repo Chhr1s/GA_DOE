@@ -176,6 +176,7 @@ background <- agg_disc_prop_complete %>%
   mutate(xmin = rev(c(0, 0.05, 0.10, 0.15, 0.20)),
          xmax = rev(c(0.049, 0.099, 0.149, 0.199, 0.251))
          )
+
 general_plot <- 
 agg_disc_prop_complete %>% 
   #filter(!is.na(district) & !is.na(oss)) %>% 
@@ -190,7 +191,7 @@ agg_disc_prop_complete %>%
              x = harsh,
              fill = prop_black), color = 'gray30', size = 0.1, alpha = 0.8) + 
   theme(axis.text.y = element_blank(), 
-        plot.title.position = 'plot', 
+        plot.title.position = 'panel', 
         axis.ticks.y = element_blank(), 
         panel.grid.minor = element_blank(), 
         panel.grid.major.y = element_blank(), 
@@ -198,10 +199,10 @@ agg_disc_prop_complete %>%
         legend.position = 'bottom'
         ) + 
   labs(y = 'Individual Districts', 
-       x = 'District Average Harsh Punishments Per Student', 
-       title = 'District Averages of Harsh Punishments per Student by Proportion of Black Students in District', 
+       x = 'District Average Harsh Punishments Per Student', #### MK: Plot title does not fit into the screen. Changed it a bit, but I guess you could also play with the text size.
+       title = 'District Averages of Harsh Punishments per Student \nby Proportion of Black Students in District', 
        fill = 'Proportion
-Black Students Per District') +
+Black Students Per District') + 
   scale_fill_distiller(palette = 
                          'Blues', 
                        type = 'seq', 
@@ -240,7 +241,10 @@ labeled_plot <-
             x = 0.225, 
             y = -55, 
             label = 'Avg. Harsh Punishments\nPer Student\nwithin block', 
-            fill = 'coral')
+            fill = 'coral') +
+  scale_x_continuous(            ##### MK: Removed the empty space on the left side of the plot, which also sort of deals with
+    expand = c(0, 0)             #####     the legend overlapping with labels.
+  )
 ```
 
 ```{r, echo = F}
@@ -259,8 +263,8 @@ percent_change <- summary %>%
 
 ```{r, eval = T, include = F}
 # Geographic Data (Teachers & Admin Page)
-GA_sf <- 
-  lea_get(state = 'GA') %>% 
+GA_sf <-                                    #### MK: For some reason, this code always returned an error message for me.
+  lea_get(state = 'GA') %>%                 ####     I am sure it's about me, but because of this, I am not able to run the rest of the code.
   st_as_sf() %>% 
   mutate(district = 
            str_replace(string = NAME, 
