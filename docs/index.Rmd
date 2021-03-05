@@ -30,86 +30,64 @@ options(tigris_class = "sf")
 
 
 ```{r import, include = F}
-frl <- import(
-  here("Data", 
-       "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report.csv")
-  ) %>% 
+frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report_Schools.csv")) %>% 
   clean_names() %>% 
-  mutate(kk_12_percent_frl = 
-           as.numeric(kk_12_percent_frl))
+  mutate(kk_12_percent_frl = as.numeric(kk_12_percent_frl), 
+         kk_12_percent_frl = replace_na(kk_12_percent_frl, 0)) %>% 
+  separate(col = school_id_school_name, 
+           into = c('school_id','school_name'), 
+           sep = " - ",
+           extra = "merge") %>% 
+  filter(system_name != 'N/A') %>% 
+  select(-system_id)
 
-total_students <- import(
-  here("Data", 
-       'FTE Enrollment by Grade Fiscal Year2019-1 Data Report.csv')
-  ) %>% 
+all_students <-  #https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data
+  import(
+    here('Data',
+         'Enrollment_By_Grade_Level_2019_Dec2nd_2019.csv')) %>%
   clean_names() %>% 
-  select(system_name, total)
+  filter(enrollment_period == 'Fall') %>% 
+  group_by(instn_name) %>% 
+  summarize(num_students = sum(enrollment_count)) %>% 
+  transmute(school_name = instn_name, 
+            total = num_students)
 
-race_gen <- import(
-  here("Data", 
-       "FTE Enrollment by Race_Ethnicity and Gender Fiscal Year2019-1 Data Report.csv")
-  ) %>% 
-  clean_names()
+
+school_demos <- import(
+    here('Data', #https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data
+  'Enrollment_by_Subgroups_Programs_2019_OCT_22_2020.csv')) %>% 
+  clean_names() %>% 
+  transmute(school_name = instn_name,
+            system_name = school_dstrct_nm,
+            perc_black = enroll_percent_black,
+            perc_hisp = enroll_percent_hispanic, 
+            perc_non_white = 100-enroll_percent_white, 
+            perc_migrant = enroll_percent_migrant, 
+            perc_esol = enroll_pct_esol
+            )
+  
+schools <- school_demos %>%
+  full_join(all_students)
 
 disc_action <- import(
   here("Data", 
        "sr2019_discipline_action_counts_sch.xlsx")
   ) %>% 
   clean_names() %>% 
-  select(-grade_range, -school_year) 
+  select(-grade_range, -school_year) %>% 
+  left_join(frl)
 
-# aggregated disc action
-agg_disc <-
-  disc_action %>% 
+
+dat <- disc_action %>% 
+  inner_join(schools) %>% # if this is left_join I have to impute
   group_by(system_name) %>% 
-  summarize(oss = mean(out_of_school_suspension_oss), 
-            juvie_ref = mean(juvenile_court_referral), 
-            physical_restraint = mean(physical_restraint), 
-            corporal_punishment = mean(corporal_punishment), 
-            detention = mean(detention), 
-            permanent_expulsion = mean(permanent_expulsion), 
-            harsh = oss + 
-              juvie_ref + 
-              physical_restraint + 
-              corporal_punishment + 
-              detention + 
-              permanent_expulsion
-            )
-
-race_gen <- 
-  race_gen %>% 
-  filter(gender == 'Total') %>% 
-  mutate(ethnic_hispanic = as.numeric(ethnic_hispanic), 
-       race_american_indian = as.numeric(race_american_indian), 
-       race_asian = as.numeric(race_asian), 
-       race_black = as.numeric(race_black), 
-       race_pacific_islander = as.numeric(race_pacific_islander), 
-       race_white = as.numeric(race_white), 
-       two_or_more_races = as.numeric(two_or_more_races)
-       ) %>% 
-  select(-gender) %>%  
-  left_join(total_students) %>% 
-  left_join(frl) %>% 
-  filter(system_name != 'State-Wide') %>% 
-  transmute(system_name,
-            prop_white = race_white/total, 
-            prop_black = race_black/total, 
-            prop_hisp = ethnic_hispanic/total, 
-            prop_non_white = 1 - prop_white,
-            total, 
-            frl = kk_12_percent_frl
-            ) %>% 
-  mutate(prop_non_white = 
-           if_else(is.na(prop_non_white), 
-                   prop_black,  
-                   # there is one district for which this is an issue
-                   # International Academy of Smyrna
-                   prop_non_white)) 
-
-# disaggregated
-disagg_prop <-
-  disc_action %>%
-  left_join(race_gen) %>%
+  mutate(district_size = sum(total, na.rm = T), 
+         d_black = sum(total*perc_black, na.rm = T)/district_size, 
+         d_hisp = sum(total*perc_hisp, na.rm = T)/district_size, 
+         d_non_white = sum(total*perc_non_white, na.rm = T)/district_size, 
+         d_esol = sum(total*perc_esol, na.rm = T)/district_size,
+         d_migrant = sum(total*perc_migrant, na.rm = T)/district_size) %>% 
+  ungroup() %>% 
   mutate(harsh =
            out_of_school_suspension_oss +
            juvenile_court_referral +
@@ -117,78 +95,77 @@ disagg_prop <-
            corporal_punishment +
            permanent_expulsion +
            in_school_suspension_iss,
-         harsh = harsh/total,
-         total, 
-         district = factor(system_name)
-         ) %>%
-  select(school_name,
-         district,
-         contains('frl'),
-         contains('prop'),
-         harsh,
-         total
+         harsh_ps = harsh/total, 
+         district = factor(system_name),
+         school_name = factor(school_name), 
+         fac_schtype = factor(fac_schtype), 
+         frl = kk_12_percent_frl 
          )
+dat_small <- 
+  dat %>% 
+  select(district, 
+         district_size, 
+         school_name, 
+         fac_schtype, 
+         total,
+         frl,
+         contains('black'), 
+         contains('hisp'), 
+         contains('non'), 
+         contains('migrant'), 
+         contains('esol'), 
+         contains('harsh')) %>% 
+  select(-non_permanent_expulsion)
 
+#dat_small[rowSums(is.na(dat_small)) > 0,]
 
-#aggregated and proportions
-agg_disc_prop <- 
-  left_join(race_gen, agg_disc)  %>% 
-  filter(system_name !='N/A') %>% 
-  mutate(district = factor(system_name), 
-         oss = oss/total, 
-         juvie_ref = juvie_ref/total,
-         physical_restraint = physical_restraint/total, 
-         corporal_punishment = corporal_punishment/total, 
-         detention = detention/total, 
-         permanent_expulsion = permanent_expulsion/total, 
-         harsh = harsh/total) 
+rm(list=setdiff(ls(), c("dat", 'dat_small')))
 ```
 
-
-```{r, include = F}
-agg_disc_prop_complete <- agg_disc_prop %>% 
-  select(prop_hisp, prop_black, harsh, district, frl) %>% 
-  mice::mice(seed = 022021, print = F) %>% 
-  mice::complete()
-
-disagg_prop_complete <- disagg_prop %>% 
-  select(prop_hisp, prop_black, harsh, district, frl) %>% 
-  mice::mice(seed = 022021, print = F) %>% 
-  mice::complete()
-
+```{r}
+# dat_small_imp <- dat_small %>% 
+#   mice::mice(m = 1, seed = 022021, print = T) %>% 
+#   mice::complete()
 ```
+
 
 ```{r without_labs, include = F}
 ## add some text explaining these
-background <- agg_disc_prop_complete %>%
-  filter(!is.na(district) & !is.na(harsh) & !is.na(prop_black)) %>%
-  group_by(harsh < 0.05,
-           harsh < 0.10 & harsh >= 0.05,
-           harsh < 0.15 & harsh >= 0.10,
-           harsh < 0.20 & harsh >= 0.15,
-           harsh < 0.25 & harsh >= 0.20,
-           harsh >= 0.25
+background <- agg_disc_perc_complete %>%
+  filter(!is.na(district) & !is.na(harsh_per_hundred) & !is.na(perc_black)) %>%
+  group_by(harsh_per_hundred < 5,
+           harsh_per_hundred < 10 & harsh_per_hundred >= 5,
+           harsh_per_hundred < 15 & harsh_per_hundred >= 10,
+           harsh_per_hundred < 20 & harsh_per_hundred >= 15,
+           harsh_per_hundred < 25 & harsh_per_hundred >= 20,
+           harsh_per_hundred >= 25
            ) %>%
-  summarize(average_prop_black = mean(prop_black),
-            average_harsh = mean(harsh)) %>%
+  summarize(average_perc_black = mean(perc_black),
+            average_harsh_per_hundred = mean(harsh_per_hundred)) %>%
   ungroup() %>%
-  select(average_prop_black, average_harsh) %>%
-  mutate(xmin = rev(c(0, 0.05, 0.10, 0.15, 0.20)),
-         xmax = rev(c(0.049, 0.099, 0.149, 0.199, 0.251))
+  select(average_perc_black, average_harsh_per_hundred) %>%
+  mutate(xmin = rev(c(0, 5, 10, 15, 20)),
+         xmax = rev(c(4.9, 9.9, 14.9, 19.9, 25.1))
          )
+dat_small %>% 
+  ggplot() + 
+  geom_col(aes(y = fct_reorder(district, harsh_ps), 
+                x = harsh_ps))
+
+
 general_plot <- 
-agg_disc_prop_complete %>% 
+agg_disc_perc_complete %>% 
   #filter(!is.na(district) & !is.na(oss)) %>% 
   ggplot() + 
    geom_rect(inherit.aes = F,
             data = background,
             aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf,
-                fill = average_prop_black),
+                fill = average_perc_black),
             alpha = 0.9) +
   geom_col(inherit.aes = F,
-           aes(y = fct_reorder(district, harsh), 
-             x = harsh,
-             fill = prop_black), color = 'gray30', size = 0.1, alpha = 0.8) + 
+           aes(y = fct_reorder(district, harsh_per_hundred), 
+             x = harsh_per_hundred,
+             fill = perc_black), color = 'gray30', size = 0.1, alpha = 0.8) + 
   theme(axis.text.y = element_blank(), 
         plot.title.position = 'plot', 
         axis.ticks.y = element_blank(), 
@@ -215,8 +192,8 @@ labeled_plot <-
   geom_label(inherit.aes = F, 
              show.legend = F,
              data = background, aes(
-             label = round(average_prop_black, 2),
-             x = xmin + 0.025, 
+             label = round(average_perc_black, 2),
+             x = xmin + 2.5, 
              y = rep(20, 5), 
              #color = average_nw_prop
              ),
@@ -224,37 +201,37 @@ labeled_plot <-
   geom_label(inherit.aes = F, 
              show.legend = F,
              data = background, aes(
-             label = round(average_harsh, 2),
-             x = xmin + 0.025, 
+             label = round(average_harsh_per_hundred, 2),
+             x = xmin + 2.5, 
              y = rep(40, 5),
              #color = average_oss
              ),
              fill = 'coral') +
   coord_cartesian(clip = 'off') +
   geom_label(inherit.aes = F, 
-            x = 0.025, 
+            x = 2.5, 
             y = -55, 
-            label = 'Avg. Proportion\nBlack Students\nwithin block', 
+            label = 'Avg. Percent\nBlack Students\nwithin block', 
             fill = 'coral3') + 
   geom_label(inherit.aes = F, 
-            x = 0.225, 
+            x = 22.5, 
             y = -55, 
-            label = 'Avg. Harsh Punishments\nPer Student\nwithin block', 
+            label = 'Avg. Harsh Punishments\nPer 100 Students\nwithin block', 
             fill = 'coral')
 ```
 
 ```{r, echo = F}
-summary <- agg_disc_prop_complete %>% 
-  #filter(!is.na(district) & !is.na(harsh) & !is.na(prop_black)) %>% 
-  mutate(`Quintile of Proportion Black Students` = ntile(prop_black, 5)) %>% 
-  group_by(`Quintile of Proportion Black Students`) %>% 
-  summarize(`Average Harsh Punishments/Student` = mean(harsh))
+summary <- agg_disc_perc_complete %>% 
+  #filter(!is.na(district) & !is.na(harsh) & !is.na(perc_black)) %>% 
+  mutate(`Quintile of Percent Black Students` = ntile(perc_black, 5)) %>% 
+  group_by(`Quintile of Percent Black Students`) %>% 
+  summarize(`Average Harsh Punishments/100 Students` = mean(harsh_per_hundred))
 
-comparison <- summary$`Average Harsh Punishments/Student`[1]
+comparison <- summary$`Average Harsh Punishments/100 Students`[1]
 
 percent_change <- summary %>% 
   mutate(`% Increase from 1st` = 
-                     (`Average Harsh Punishments/Student`- comparison)/comparison*100)
+                     (`Average Harsh Punishments/100 Students`- comparison)/comparison*100)
 ```
 
 ```{r, eval = T, include = F}
@@ -277,35 +254,81 @@ GA_sf <-
 ```{r, eval = T, include = F}
 #disc_demo %>% filter(system_name == 'Macon County')
 GA_sf <- 
-  GA_sf %>% left_join(agg_disc_prop_complete) # didn't use imputed data before
+  GA_sf %>% 
+  left_join(agg_disc_perc_complete) # didn't use imputed data before
 ```
 
 ```{r}
 GA_sf <- 
   GA_sf %>% 
   mutate(harsh_qt = ntile(harsh, 5), 
-         black_qt = ntile(prop_black, 5),
+         black_qt = ntile(perc_black, 5),
          frl_qt = ntile(frl, 5), 
          harsh_3 = ntile(harsh, 3), 
-         black_3 = ntile(prop_black, 3), 
-         frl_3 = ntile(frl, 3))
+         black_3 = ntile(perc_black, 3), 
+         frl_3 = ntile(frl, 3)) 
+
+GA_sf_long <- 
+  GA_sf %>% 
+  select(contains('_qt'), geometry, district) %>% 
+  pivot_longer(harsh_qt:frl_qt,
+               names_pattern = '(.+)_qt', 
+               names_to = 'variable', 
+               values_to = 'quintile') %>% 
+  mutate(quintile = factor(quintile))
+
 ```
 
 ```{r}
-harsh_map <- 
-  tm_shape(GA_sf) +
-  tm_polygons(c('harsh_qt', 'black_qt', 'frl_qt'),
-              labels = c('1st quintile',
-                         '2nd quintile',
-                         '3rd quintile',
-                         '4th quintile',
-                         '5th quintile'),
-              palette = 'Blues', 
-              title = 'Quintiles',
-              legend.hist = F)  + 
-  tm_facets(sync = F, ncol = 3) + 
-  tm_layout(legend.outside = T, 
-            panel.labels = c("harsh punishments per Student", "Prop. Black", 'Prop. FRL'))
+# harsh_map <- 
+#   tm_shape(GA_sf) +
+#   tm_polygons(c('harsh_qt', 'black_qt', 'frl_qt'),
+#               labels = c('1st quintile',
+#                          '2nd quintile',
+#                          '3rd quintile',
+#                          '4th quintile',
+#                          '5th quintile'),
+#               palette = 'Blues', 
+#               title = 'Quintiles',
+#               legend.hist = F)  + 
+#   tm_facets(sync = F, ncol = 3) + 
+#   tm_layout(legend.outside = T, 
+#             panel.labels = c("harsh punishments per Student", "Prop. Black", 'Prop. FRL'))
+#library(plotly)
+  
+
+map1 <- ggplot(GA_sf_long, aes(geometry = geometry)) + 
+  geom_sf(aes(fill = quintile, name = district)) +
+  facet_wrap(~variable, 
+             labeller = 
+               as_labeller(
+                 c(`black` = 'Proportion\nBlack\nStudents',
+                   `frl` = 'Proportion\nFRL\nStatus', 
+                   `harsh` = 'Harsh\nPunishments\nper Student'
+                 )
+             )) +
+  scale_fill_manual(
+    values =
+      c('#a9c2f4',
+        '#7ca2ee',
+        '#4f82e8',
+        '#2262e2',
+        '#184eb9'),
+    na.value = '#6a6b6c'
+    ) +
+  theme_void()  +
+  labs(fill = 'Quintile')
+
+
+plotly_map1 <- ggplotly(map1)
+
+
+plotly_map1 %>% 
+  layout(title = 'Distribution of District Harsh Punishments, presented alongside distributions
+of Proportion FRL Eligible and Proportion Black Students'
+         )
+
+
 ```
 
 
@@ -427,20 +450,77 @@ Researchers
 ===
 
 ```{r, eval = F}
+dat_small
+lmer <- lmer(data = dat_small, 
+     formula = 
+       harsh ~ total + fac_schtype + perc_black + perc_hisp + perc_migrant + perc_esol + frl + (1 | district))
+summary(lmer)
 
-lm1 <- lm(data = agg_disc_prop_complete, 
-   formula = harsh ~ prop_black + prop_hisp + frl)
+lmertree <- 
+  lmertree(data = dat_small, 
+     formula = 
+       harsh_ps ~ perc_black | 
+       district | 
+       total + fac_schtype + perc_black + perc_hisp + perc_migrant + perc_esol + frl , 
+     alpha = 0.001, 
+     bonferroni = T, 
+     minsize = 200)
+summary(lmertree)
+
+plot(lmertree, ask = F, which = 'all')
+
+#install.packages('ggparty')
+#library(ggparty)
+#ggparty(lmertree)
+py <- lmertree$tree[1]
+#ggparty(py)$data
+
+ggparty(py) +
+  geom_edge() +
+  geom_edge_label() +
+  geom_node_label(aes(label = splitvar), ids = "inner") +
+  # identical to  geom_node_splitvar() +
+ # geom_node_label(aes(label = info), ids = "terminal")
+  geom_node_plot(gglist = list(geom_point(aes(x = perc_black, y = harsh_ps)#,
+                                        #position = position_fill()
+                                        )#,
+                               #xlab("play")
+                               ))
+```
+
+```{r}
+lm1 <- lm(data = agg_disc_perc_complete, 
+   formula = harsh ~ perc_black + perc_hisp + frl)
 summary(lm1)
 
-lm2 <- lm(data = disagg_prop_complete, 
-   formula = harsh ~ prop_black + prop_hisp + frl)
+lm2 <- lm(data = disagg_perc_complete, 
+   formula = harsh ~ perc_black + perc_hisp + frl)
 summary(lm2)
 
-lmer1 <- lmer(data = disagg_prop_complete, 
-   formula = harsh ~ prop_black + prop_hisp + frl + (1 | district))
+lmer1 <- lmer(data = disagg_perc_complete, 
+   formula = harsh_per_hundred ~ 1 + (1 | district))
 summary(lmer1)  
 
-agg_disc_prop_complete %>% 
+lmer2 <- lmer(data = disagg_perc_complete, 
+   formula = harsh_per_hundred ~ perc_black + perc_hisp + frl + (1 | district))
+summary(lmer2)  
+
+lmer3 <- lmer(data = disagg_perc_complete, 
+   formula = harsh_per_hundred ~ perc_black + perc_hisp + frl + (perc_black + perc_hisp + frl | district))
+summary(lmer3) 
+
+# issues with variance covariance matrix, go back a model
+
+
+b_slope <- lmer2@beta[2]
+frl_slope <- lmer2@beta[4]
+
+
+
+```
+
+```{r}
+agg_disc_perc_complete %>% 
   mutate(lm1 = predict(lm1)) %>% 
   ggplot(aes(x = lm1, y = harsh)) + 
   geom_point() +
@@ -448,19 +528,20 @@ agg_disc_prop_complete %>%
   lims(x = c(0, .3), y = c(0, .3))
 
 
-disagg_prop_complete %>% 
+disagg_perc_complete %>% 
   mutate(lm2 = predict(lm2)) %>% 
   ggplot(aes(x = lm2, y = harsh)) + 
   geom_point()+
   geom_abline(intercept = 0, slope = 1) + 
   lims(x = c(0, .3), y = c(0, .3))
 
-disagg_prop_complete %>% 
+disagg_perc_complete %>% 
   mutate(lmer1 = predict(lmer1)) %>% 
   ggplot(aes(x = lmer1, y = harsh)) + 
   geom_point()+
   geom_abline(intercept = 0, slope = 1) + 
   lims(x = c(0, .3), y = c(0, .3))
+
 ```
 
 ```{r, eval = F}
