@@ -23,6 +23,8 @@ library(lmerTest)
 library(glmertree)
 library(plotly)
 library(colorblindr)
+library(ggparty)
+library(gganimate)
 options(tigris_use_cache = TRUE)
 options(tigris_class = "sf")
 ```
@@ -131,64 +133,208 @@ dat_long <- dat_small %>%
 rm(list=setdiff(ls(), c("dat", 'dat_small', 'dat_long')))
 ```
 
+```{r}
+target_schools <- 
+  dat_small %>% 
+  mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
+  filter(harsh_10 == 10) %>% 
+  map_dfr(mean)
+
+exemplar_schools <- 
+  dat_small %>% 
+  mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
+  filter(harsh_10 == 1) %>% 
+  map_dfr(mean)
+
+target_schools
+exemplar_schools
+
+  ## CONSIDER CALCULATING STANDARD ERRORS
+  ## PLOT IDEAS: JUST GIVE A BAR CHART FOR EACH OF THESE VARIABLES COMPARING THEM ACROSS SCHOOLS
+  ## A TABLE WOULD DO WELL, TOO
+  ## TALK ABOUT THESE AS INTERVENTION TARGETS
+
+```
+
 
 ```{r include = F}
-original_TA_plot <-
-dat_long  %>% 
-  filter(school_name != 'Georgia Cyber Academy' & 
-           fac_schtype %in% c('M', 'H') & 
-           school_demos != 'white'
-           ) %>% 
-  mutate(school_demos = ordered(school_demos, 
-                                c('hisp', 'frl', 'esol', 'non_white', 'black', 'migrant'))) %>% 
-  ggplot(aes(x = percents, 
-             y = harsh_per_100, 
-             color = school_demos
-                 )) +
-  geom_point(alpha = 0.8, 
-             show.legend = F) + 
-  geom_smooth(method = 'lm', 
-              color = 'black', 
-              size = 0.2, 
-              show.legend = F) 
+# original_TA_plot <-
+# dat_long  %>%
+#   filter(school_name != 'Georgia Cyber Academy' &
+#            fac_schtype %in% c('M', 'H') &
+#            school_demos != 'non_white' &
+#            school_demos != 'migrant' &
+#            school_demos != 'esol'
+#            ) %>%
+#   mutate(school_demos = ordered(school_demos,
+#                                 levels = 
+#                                 c('white', 
+#                                   'hisp', 
+#                                   'frl', 
+#                                   'black'), 
+#                                 labels = c('% White', 
+#                                   '% Hispanic', 
+#                                   '% FRL', 
+#                                   '% Black'))) %>%
+#   ggplot(aes(x = percents,
+#              y = harsh_ps,
+#              color = school_demos
+#                  )) +
+#   geom_point(alpha = 0.8, 
+#              show.legend = F) +
+#   geom_smooth(method = 'lm',
+#               color = 'black',
+#               show.legend = F)
 
+
+```
+
+```{r, echo = F}
+# formatted_TA_plot <- 
+#   original_TA_plot +
+#   scale_color_OkabeIto() +
+#   theme_minimal(base_size = 16) +
+#   theme(axis.line = element_line(size = 1)) + 
+#   #transition_states(school_demos) + 
+#   labs(x = '{next_state} in School', 
+#        y = 'Number of Harsh Punishments
+# per Student', 
+#        title = 'Harsh Punishments per Student
+# by {next_state}')
 ```
 
 ```{r}
-formatted_TA_plot <- 
-  original_TA_plot +
-  labs(x = 'Percent of School', 
-       y = 'Number of Harsh Punishments
-per 100 Students', 
-       title = 'Harsh Punishments per 100 Students
-by School Demographics') +
-  scale_color_OkabeIto() +
-  theme_minimal(base_size = 16) +
-  facet_wrap(~school_demos, 
-             labeller = as_labeller(
-                 c(`black` = '% Black',
-                   `hisp` = '% Hispanic',
-                   `frl` = '% FRL', 
-                   `esol` = '% ESOL',
-                   `migrant` = '% Migrant',
-                   `non_white` = '% Non-White')), 
-             ncol = 6) + #scales = 'free' 
-  theme(axis.line = element_line(size = 1))
+lmertree_TA <- dat_small %>% 
+  mutate(`% Black` = perc_black, `School Type` = fac_schtype) %>% 
+  lmertree(
+     formula = 
+       harsh_ps ~ 1 | 
+       (1 | district/`School Type`) | 
+       total +
+       `School Type` + 
+       `% Black` + 
+       perc_hisp + 
+       perc_migrant + 
+       perc_esol + 
+       perc_frl +
+       d_black + 
+       d_hisp + 
+       d_migrant + 
+       d_esol + 
+       d_frl, 
+     alpha = 0.001, 
+     bonferroni = T, 
+     minsize = 224)
+
+
+p1 <- lmertree_TA$tree[1]
+
+asterisk_sign <- function(p_value) {
+  if (p_value < 0.001) return(c("p_value < 0.001"))
+  if (p_value < 0.01) return(c("p_value < 0.01"))
+  if (p_value < 0.05) return(c("p_value < 0.05"))
+  else return("")
+}
+```
+
+```{r}
+
+tree <-
+ggparty(p1) +
+  geom_edge() +
+  geom_edge_label(shift = .5) +
+  geom_node_label(aes(label = splitvar), 
+                  size = 0.001, 
+                  ids = "inner") +
+  geom_node_plot(gglist = 
+                   list(
+                     # geom_point(
+                     #   aes(
+                     #     x = `% Black`,
+                     #     y = harsh_ps#,
+                     #     #color = `School Type`
+                     #     ),
+                     #   alpha = 0.7),
+                     # geom_smooth(method = 'lm',
+                     #   aes(x = `% Black`,
+                     #     y = harsh_ps),
+                     #   alpha = 0.7),
+                     geom_boxplot(
+                     aes(y = harsh_ps),
+                     show.legend = F),
+    lims(y = c(0,1)),
+    labs(y = 'Punishments/Student'),
+    theme_minimal()#,
+    # theme(axis.title.x=element_blank(), 
+    #       axis.ticks.x = element_blank(), 
+    #       axis.text.x = element_blank())
+    ), 
+    height = 0.75,
+    shared_axis_labels = T#, 
+    #scales = 'free_x'
+    ) + 
+  geom_node_plot(ids = c(1, 2, 5),
+                 gglist = 
+                   list(
+                     geom_boxplot(
+                       aes(x = `School Type`, 
+                           y = harsh_ps,  
+                           color = `School Type`),
+                       show.legend = FALSE,
+                       alpha = .8),
+                     scale_fill_OkabeIto(), 
+                     theme_minimal(),
+                     labs(y = 'Punishments/Student'),
+                     scale_y_continuous(position = 'right', limits = c(0, 0.75))),
+                 height = 1.75, 
+                 nudge_x = 0.15, 
+                 nudge_y = -0.02, 
+                 scales = 'free_x'
+                 ) +
+  geom_node_label(# label nodes with ID, split variable and p value
+                  line_list = list(aes(label = paste('N = ' , nodesize)), 
+                                   aes(label = splitvar),
+                                   aes(label = asterisk_sign(p.value))),
+                  # set graphical parameters for each line
+                  line_gpar = list(list(size = 8,
+                                        col = "black",
+                                        fontface = "bold"),
+                                   list(size = 12),
+                                   list(size = 8)
+                                   ),
+                  ids = "inner") +
+  geom_node_label(aes(label = paste0("N = ", nodesize)),
+                  fontface = "bold",
+                  ids = "terminal",
+                  size = 3,
+                  # 0.01 nudge_y is enough to be above the node plot since a terminal
+                  # nodeplot's top (not center) is at the node's coordinates.
+                  nudge_y = 0.01) 
 
 ```
 
 
+
 ```{r, echo = F}
-summary <- dat_small %>% 
+summary_1 <- dat_small %>% 
   mutate(`Quintile of Percent Black Students` = ntile(perc_black, 5)) %>% 
   group_by(`Quintile of Percent Black Students`) %>% 
   summarize(`Average Harsh Punishments/Student` = mean(harsh_ps))
 
-comparison <- summary$`Average Harsh Punishments/Student`[1]
+summary_2 <- dat_small %>% 
+  mutate(`Quintile of Percent Hispanic Students` = ntile(perc_hisp, 5)) %>% 
+  group_by(`Quintile of Percent Hispanic Students`) %>% 
+  summarize(`Average Harsh Punishments/Student` = mean(harsh_ps))
 
-percent_change <- summary %>% 
-  mutate(`% Increase from 1st` = 
-           (`Average Harsh Punishments/Student`- comparison)/comparison*100)
+comparison_1 <- summary_1$`Average Harsh Punishments/Student`[1]
+comparison_2 <- summary_2$`Average Harsh Punishments/Student`[1]
+
+percent_change_1 <- summary_1 %>% 
+  mutate(`% Change from 1st` = 
+           (`Average Harsh Punishments/Student`- comparison_1)/comparison_1*100)
+percent_change_2 <- summary_2 %>% 
+  mutate(`% Change from 1st` = 
+           (`Average Harsh Punishments/Student`- comparison_2)/comparison_2*100)
 ```
 
 ```{r, eval = T, include = F}
@@ -229,7 +375,6 @@ GA_districts <-
 ```
 
 
-
 ```{r include=FALSE}
 b_map <- GA_districts %>% 
   mutate(`Quintile Harsh Punishment` = harsh_qt,
@@ -251,8 +396,8 @@ b_map <- GA_districts %>%
         '#184eb9'),
     na.value = '#6a6b6c') +
   theme_void()  +
-  labs(fill = 'Quintile',
-       title = 'Number of Harsh Punishments per Student')
+  labs(fill = 'Quintile Harsh Punishments',
+       title = 'Distribution Harsh Punishments per Student')
 
 
 plotly_map1 <- 
@@ -266,7 +411,7 @@ General
 Column {data-width=650} 
 -----------------------------------------------------------------------
 
-### General 
+### Interactive Map 
 
 ```{r}
 plotly_map1 
@@ -279,7 +424,14 @@ Column {data-width=350}
 ### Chart B
 
 ```{r}
-percent_change %>% 
+percent_change_1 %>% 
+  round(digits = 3) %>% 
+  gt() %>% 
+  tab_header(
+    title = '',
+  )
+
+percent_change_2 %>% 
   round(digits = 3) %>% 
   gt() %>% 
   tab_header(
@@ -293,16 +445,30 @@ percent_change %>%
 School Admin
 ===
 
+Column {data-width=650}
+-----------------------------------------------------------------------
+### Chart A
+
 ```{r}
-formatted_TA_plot
+#formatted_TA_plot
+```
+
+
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+
 ```
 
 Researchers
 ===
 
-```{r, eval = F}
-
-
+```{r}
+tree
 ```
 
 ```{r, include = F, eval = F}
