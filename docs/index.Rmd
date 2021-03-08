@@ -25,6 +25,7 @@ library(plotly)
 library(colorblindr)
 library(ggparty)
 library(gganimate)
+library(ggridges)
 library(mice)
 options(tigris_use_cache = TRUE)
 options(tigris_class = "sf")
@@ -155,14 +156,14 @@ target_schools <-
   dat_final %>% 
   mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
   filter(harsh_10 == 10) %>% 
-  map_dfr(mean, na.rm = T) %>% 
+  #map_dfr(mean, na.rm = T) %>% 
   mutate(category = '90th percentile')
 
 exemplar_schools <- 
   dat_final %>% 
   mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
   filter(harsh_10 == 1) %>% 
-  map_dfr(mean, na.rm = T) %>% 
+  #map_dfr(mean, na.rm = T) %>% 
   mutate(category = '10th Percentile')
 
 comparison_schools <- 
@@ -192,12 +193,15 @@ comparison_districts <-
                names_prefix = 'd_',
                values_to = 'percent')
 
-school_plot <- comparison_schools %>% 
+school_plot <- 
+comparison_schools %>% 
   ggplot(aes(y = 
                fct_reorder(demographics, percent), 
              x = percent, 
              fill = category)) + 
-  geom_col(position = 'dodge') +
+  #geom_col(position = 'dodge') +
+  geom_density_ridges(alpha = 0.6, 
+                      color = 'gray30', show.legend = F) + 
   lims(x = c(0,100)) +
   scale_y_discrete(breaks = c(
     'black', 
@@ -219,7 +223,7 @@ school_plot <- comparison_schools %>%
        title = 'School Characteristics',
        #subtitle = 'Schools with most & least harsh punishments per student',
        y = '', 
-       x = 'Percent (%)') +
+       x = '') +
   theme_minimal() + 
   theme(legend.position = 'bottom', 
         plot.title.position = 'plot') +
@@ -231,7 +235,8 @@ district_plot <-
                fct_reorder(district_demographics, percent), 
              x = percent, 
              fill = category)) + 
-  geom_col(position = 'dodge') + 
+  geom_density_ridges(alpha = 0.6, 
+                      color = 'gray30') + 
   labs(fill = 'Harsh Punishments Per Student', 
        title = 'District Characteristics',
        #subtitle = 'Schools with most & least harsh punishments per student',
@@ -344,9 +349,9 @@ ggsave('tree_plot.png', tree, path = here::here('Data'))
 
 ```{r, echo = F}
 summary_1 <- dat_final %>% 
-  mutate(`Quintile of Percent Black Students` = ntile(perc_black, 5)) %>% 
-  group_by(`Quintile of Percent Black Students`) %>% 
-  summarize(`Average Percent Black Students in Quintile` = mean(perc_black), 
+  mutate(`Quintile of % Black Students` = ntile(perc_black, 5)) %>% 
+  group_by(`Quintile of % Black Students`) %>% 
+  summarize(`Average % Black Students in Quintile` = mean(perc_black), 
            `Average Harsh Punishments per Student` = mean(harsh_ps))
 
 comparison_1 <- summary_1$`Average Harsh Punishments per Student`[1]
@@ -356,9 +361,9 @@ percent_change_1 <- summary_1 %>%
            (`Average Harsh Punishments per Student`- comparison_1)/comparison_1*100)
 
 summary_2 <- dat_final %>% 
-  mutate(`Quintile of Percent FRL` = ntile(perc_frl, 5)) %>% 
-  group_by(`Quintile of Percent FRL`) %>% 
-  summarize(`Average Percent FRL in Quintile` = mean(perc_frl), 
+  mutate(`Quintile of % FRL Students` = ntile(perc_frl, 5)) %>% 
+  group_by(`Quintile of % FRL Students`) %>% 
+  summarize(`Average % FRL Students in Quintile` = mean(perc_frl), 
            `Average Harsh Punishments per Student` = mean(harsh_ps))
 
 comparison_2 <- summary_2$`Average Harsh Punishments per Student`[1]
@@ -502,26 +507,25 @@ Column {data-width=650, .tabset}
 ### Figure 2. Final
 
 ```{r}
-gridExtra::grid.arrange(school_plot, district_plot) 
+gridExtra::grid.arrange(school_plot, district_plot, heights = list(0.9, 1.0))
 ```
 
 ### Tables
 
-```{r}
-
+```{r }
 percent_change_2 %>% 
   round(digits = 2) %>% 
   gt() %>% 
   tab_header(
-    title = 'Table 1. Increase in Harsh Punishments with Quintile of FRL Elibible Students',
-  )
+    title = 'Table 1. Increase in Harsh Punishments with Quintile of FRL Elibible Students') %>%
+  tab_options(table.width = pct(80))
 
 percent_change_1 %>%
   round(digits = 2) %>%
   gt() %>%
   tab_header(
-    title = 'Table 2. Increase in Harsh Punishments with Quintile of Percent Black Students',
-  )
+    title = 'Table 2. Increase in Harsh Punishments with Quintile of Percent Black Students') %>%
+  tab_options(table.width = pct(80))
 ```
 
 ### Figure 2. Initial
