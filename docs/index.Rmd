@@ -27,14 +27,17 @@ library(ggparty)
 library(gganimate)
 options(tigris_use_cache = TRUE)
 options(tigris_class = "sf")
+
+
 ```
 
 
 ```{r import, include = F}
 frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report_Schools.csv")) %>% 
   clean_names() %>% 
-  mutate(kk_12_percent_frl = as.numeric(kk_12_percent_frl), 
-         kk_12_percent_frl = replace_na(kk_12_percent_frl, 0)) %>% 
+  mutate(kk_12_percent_frl = as.numeric(kk_12_percent_frl) 
+         #kk_12_percent_frl = replace_na(kk_12_percent_frl, 0)
+         ) %>% 
   separate(col = school_id_school_name, 
            into = c('school_id','school_name'), 
            sep = " - ",
@@ -79,6 +82,10 @@ disc_action <- import(
   select(-grade_range, -school_year) %>% 
   left_join(frl)
 
+  ### There are a problem with districts where no schools reported FRL
+  ### In these districts, the average of all = 0 (with na.rm = T), 
+  ### Unsure how to handle these...
+
 
 dat <- disc_action %>% 
   inner_join(schools) %>% # if this is left_join I have to impute
@@ -101,6 +108,7 @@ dat <- disc_action %>%
          d_black = sum(total*perc_black, na.rm = T)/district_size, 
          d_hisp = sum(total*perc_hisp, na.rm = T)/district_size, 
          d_non_white = sum(total*perc_non_white, na.rm = T)/district_size, 
+         d_white = sum(total*perc_white, na.rm = T)/district_size, 
          d_esol = sum(total*perc_esol, na.rm = T)/district_size,
          d_migrant = sum(total*perc_migrant, na.rm = T)/district_size,
          d_frl = sum(total*kk_12_percent_frl, na.rm = T)/district_size, 
@@ -131,79 +139,124 @@ dat_long <- dat_small %>%
 #dat_small[rowSums(is.na(dat_small)) > 0,]
 
 rm(list=setdiff(ls(), c("dat", 'dat_small', 'dat_long')))
+
+
 ```
 
-```{r}
+```{r, include = F, echo = F}
 target_schools <- 
   dat_small %>% 
   mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
   filter(harsh_10 == 10) %>% 
-  map_dfr(mean)
+  map_dfr(mean, na.rm = T) %>% 
+  mutate(category = '90th percentile')
 
 exemplar_schools <- 
   dat_small %>% 
   mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
   filter(harsh_10 == 1) %>% 
-  map_dfr(mean)
+  map_dfr(mean, na.rm = T) %>% 
+  mutate(category = '10th Percentile')
 
-target_schools
-exemplar_schools
+comparison_schools <- 
+  bind_rows(target_schools, exemplar_schools) %>% 
+  select(-district, 
+         -contains('non_white'),
+         -district_size, 
+         -school_name, 
+         -fac_schtype,
+         -starts_with('d_')) %>% 
+  pivot_longer(starts_with('perc_'),
+               names_to = 'demographics', 
+               names_prefix = 'perc_',
+               values_to = 'percent') 
+
+comparison_districts <- 
+  bind_rows(target_schools, exemplar_schools) %>% 
+  select(-district, 
+         -district_size, 
+         -contains('non_white'),
+         -school_name, 
+         -fac_schtype,
+         -starts_with('perc_'), 
+         -d_harsh) %>% 
+  pivot_longer(starts_with('d_'),
+               names_to = 'district_demographics', 
+               names_prefix = 'd_',
+               values_to = 'percent')
+
+school_plot <- comparison_schools %>% 
+  ggplot(aes(y = 
+               fct_reorder(demographics, percent), 
+             x = percent, 
+             fill = category)) + 
+  geom_col(position = 'dodge') +
+  lims(x = c(0,100)) +
+  scale_y_discrete(breaks = c(
+    'black', 
+    'frl', 
+    'white',
+    'hisp', 
+    'esol', 
+    'migrant'
+  ),
+    labels = c(
+    'Black Students', 
+    'FRL Eligible',
+    'White Students', 
+    'Hispanic Students', 
+    'ESOL Students',
+    'Migrant Students'
+  )) +
+  labs(fill = 'Harsh Punishments Per Student', 
+       title = 'School Characteristics',
+       #subtitle = 'Schools with most & least harsh punishments per student',
+       y = '', 
+       x = 'Percent (%)') +
+  theme_minimal() + 
+  theme(legend.position = 'bottom', 
+        plot.title.position = 'plot') +
+  scale_fill_OkabeIto()
+
+district_plot <- 
+  comparison_districts %>% 
+  ggplot(aes(y = 
+               fct_reorder(district_demographics, percent), 
+             x = percent, 
+             fill = category)) + 
+  geom_col(position = 'dodge') + 
+  labs(fill = 'Harsh Punishments Per Student', 
+       title = 'District Characteristics',
+       #subtitle = 'Schools with most & least harsh punishments per student',
+       y = '', 
+       x = 'Percent (%)') +
+  lims(x = c(0,100)) +
+  theme_minimal() + 
+  scale_y_discrete(breaks = c(
+    'black', 
+    'frl', 
+    'white',
+    'hisp', 
+    'esol', 
+    'migrant'
+  ),
+  labels = c(
+    'Black Students', 
+    'FRL Eligible',
+    'White Students', 
+    'Hispanic Students', 
+    'ESOL Students',
+    'Migrant Students'
+  )) +
+  theme(legend.position = 'bottom', 
+        plot.title.position = 'plot') +  
+  scale_fill_OkabeIto()
 
   ## CONSIDER CALCULATING STANDARD ERRORS
-  ## PLOT IDEAS: JUST GIVE A BAR CHART FOR EACH OF THESE VARIABLES COMPARING THEM ACROSS SCHOOLS
-  ## A TABLE WOULD DO WELL, TOO
   ## TALK ABOUT THESE AS INTERVENTION TARGETS
-
 ```
 
-
-```{r include = F}
-# original_TA_plot <-
-# dat_long  %>%
-#   filter(school_name != 'Georgia Cyber Academy' &
-#            fac_schtype %in% c('M', 'H') &
-#            school_demos != 'non_white' &
-#            school_demos != 'migrant' &
-#            school_demos != 'esol'
-#            ) %>%
-#   mutate(school_demos = ordered(school_demos,
-#                                 levels = 
-#                                 c('white', 
-#                                   'hisp', 
-#                                   'frl', 
-#                                   'black'), 
-#                                 labels = c('% White', 
-#                                   '% Hispanic', 
-#                                   '% FRL', 
-#                                   '% Black'))) %>%
-#   ggplot(aes(x = percents,
-#              y = harsh_ps,
-#              color = school_demos
-#                  )) +
-#   geom_point(alpha = 0.8, 
-#              show.legend = F) +
-#   geom_smooth(method = 'lm',
-#               color = 'black',
-#               show.legend = F)
-
-
-```
-
-```{r, echo = F}
-# formatted_TA_plot <- 
-#   original_TA_plot +
-#   scale_color_OkabeIto() +
-#   theme_minimal(base_size = 16) +
-#   theme(axis.line = element_line(size = 1)) + 
-#   #transition_states(school_demos) + 
-#   labs(x = '{next_state} in School', 
-#        y = 'Number of Harsh Punishments
-# per Student', 
-#        title = 'Harsh Punishments per Student
-# by {next_state}')
-```
-
-```{r}
+```{r eval=FALSE, include=FALSE}
 lmertree_TA <- dat_small %>% 
   mutate(`% Black` = perc_black, `School Type` = fac_schtype) %>% 
   lmertree(
@@ -226,7 +279,6 @@ lmertree_TA <- dat_small %>%
      bonferroni = T, 
      minsize = 224)
 
-
 p1 <- lmertree_TA$tree[1]
 
 asterisk_sign <- function(p_value) {
@@ -235,68 +287,43 @@ asterisk_sign <- function(p_value) {
   if (p_value < 0.05) return(c("p_value < 0.05"))
   else return("")
 }
+
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 
+ ## if we add the line back in with the replace_na() then it works out
+ ## now it changes the plot
 tree <-
 ggparty(p1) +
-  geom_edge() +
-  geom_edge_label(shift = .5) +
+  geom_edge(size = 1.2) +
+  geom_edge_label() +
   geom_node_label(aes(label = splitvar), 
-                  size = 0.001, 
                   ids = "inner") +
-  geom_node_plot(gglist = 
-                   list(
-                     # geom_point(
-                     #   aes(
-                     #     x = `% Black`,
-                     #     y = harsh_ps#,
-                     #     #color = `School Type`
-                     #     ),
-                     #   alpha = 0.7),
-                     # geom_smooth(method = 'lm',
-                     #   aes(x = `% Black`,
-                     #     y = harsh_ps),
-                     #   alpha = 0.7),
-                     geom_boxplot(
-                     aes(y = harsh_ps),
-                     show.legend = F),
+  geom_node_plot(gglist = list(
+    geom_point(
+      aes(
+        x = `% Black`,
+        y = harsh_ps,
+        color = `School Type`),
+      alpha = 0.7),
+    geom_smooth(
+      method = 'lm',
+      aes(
+        x = `% Black`,
+        color = `School Type`,
+        y = harsh_ps),
+      alpha = 0.7),
     lims(y = c(0,1)),
     labs(y = 'Punishments/Student'),
-    theme_minimal()#,
-    # theme(axis.title.x=element_blank(), 
-    #       axis.ticks.x = element_blank(), 
-    #       axis.text.x = element_blank())
-    ), 
-    height = 0.75,
-    shared_axis_labels = T#, 
-    #scales = 'free_x'
-    ) + 
-  geom_node_plot(ids = c(1, 2, 5),
-                 gglist = 
-                   list(
-                     geom_boxplot(
-                       aes(x = `School Type`, 
-                           y = harsh_ps,  
-                           color = `School Type`),
-                       show.legend = FALSE,
-                       alpha = .8),
-                     scale_fill_OkabeIto(), 
-                     theme_minimal(),
-                     labs(y = 'Punishments/Student'),
-                     scale_y_continuous(position = 'right', limits = c(0, 0.75))),
-                 height = 1.75, 
-                 nudge_x = 0.15, 
-                 nudge_y = -0.02, 
-                 scales = 'free_x'
-                 ) +
+    theme_minimal()), 
+    shared_axis_labels = T) + 
   geom_node_label(# label nodes with ID, split variable and p value
-                  line_list = list(aes(label = paste('N = ' , nodesize)), 
+                  line_list = list(aes(label = paste('N = ' , nodesize)),
                                    aes(label = splitvar),
                                    aes(label = asterisk_sign(p.value))),
                   # set graphical parameters for each line
-                  line_gpar = list(list(size = 8,
+                  line_gpar = list(list(#size = 8,
                                         col = "black",
                                         fontface = "bold"),
                                    list(size = 12),
@@ -306,35 +333,28 @@ ggparty(p1) +
   geom_node_label(aes(label = paste0("N = ", nodesize)),
                   fontface = "bold",
                   ids = "terminal",
-                  size = 3,
-                  # 0.01 nudge_y is enough to be above the node plot since a terminal
-                  # nodeplot's top (not center) is at the node's coordinates.
-                  nudge_y = 0.01) 
+                  ) + 
+  labs(title = 'Mixed Effects Regression Tree of Harsh Punishments per Students') +
+  theme(plot.title = element_text(hjust = 0.5))
 
+tree
+ggsave('tree_plot.png', tree, path = here::here('Data'))
 ```
-
 
 
 ```{r, echo = F}
 summary_1 <- dat_small %>% 
   mutate(`Quintile of Percent Black Students` = ntile(perc_black, 5)) %>% 
   group_by(`Quintile of Percent Black Students`) %>% 
-  summarize(`Average Harsh Punishments/Student` = mean(harsh_ps))
+  summarize(`Average Percent Black Students in Quintile` = mean(perc_black), 
+           `Average Harsh Punishments per Student` = mean(harsh_ps))
 
-summary_2 <- dat_small %>% 
-  mutate(`Quintile of Percent Hispanic Students` = ntile(perc_hisp, 5)) %>% 
-  group_by(`Quintile of Percent Hispanic Students`) %>% 
-  summarize(`Average Harsh Punishments/Student` = mean(harsh_ps))
-
-comparison_1 <- summary_1$`Average Harsh Punishments/Student`[1]
-comparison_2 <- summary_2$`Average Harsh Punishments/Student`[1]
+comparison_1 <- summary_1$`Average Harsh Punishments per Student`[1]
 
 percent_change_1 <- summary_1 %>% 
-  mutate(`% Change from 1st` = 
-           (`Average Harsh Punishments/Student`- comparison_1)/comparison_1*100)
-percent_change_2 <- summary_2 %>% 
-  mutate(`% Change from 1st` = 
-           (`Average Harsh Punishments/Student`- comparison_2)/comparison_2*100)
+  mutate(`% Increase in Punishments from 1st` = 
+           (`Average Harsh Punishments per Student`- comparison_1)/comparison_1*100)
+
 ```
 
 ```{r, eval = T, include = F}
@@ -352,6 +372,7 @@ GA_sf <-
            str_replace(string = district, 
                        pattern = " School", "")
          )
+
 ```
 
 ```{r, eval = T, include = F}
@@ -370,8 +391,7 @@ GA_districts <-
          frl_qt = ntile(d_frl, 5), 
          harsh_3 = ntile(d_harsh, 3), 
          black_3 = ntile(d_black, 3), 
-         frl_3 = ntile(d_frl, 3)) 
-
+         frl_3 = ntile(d_frl, 3))
 ```
 
 
@@ -381,7 +401,7 @@ b_map <- GA_districts %>%
     Demographics = paste('\n', '(', district, ')',
                          '\n', round(d_black, 1), '% Black', 
                          '\n', round(d_hisp, 1), '% Hispanic', 
-                         '\n', round(d_migrant,1), '% Migrant', 
+                         '\n', round(d_migrant, 1), '% Migrant', 
                          '\n', round(d_frl, 1), '% FRL', 
                          sep = "")
          ) %>% 
@@ -405,70 +425,106 @@ plotly_map1 <-
 
 ```
 
-General
+General 
 ===
 
-Column {data-width=650} 
+Column {data-width=250}
 -----------------------------------------------------------------------
 
-### Interactive Map 
+### Introduction
+
+**Background**
+
+In a school setting, student discipline is not completely objective. School admins bring bias into their decision-making process. The interactive map shows harsh punishments per student, represented as quintiles of the underlying distribution, for each district. In addition to these, district names and several district demographic characteristics are presented by hovering over a district line.
+
+**Useful Definitions:** 
+
+* A *quintile* is exactly 20% (or $\frac1{5^{th}}$) of the population; these are formed by arranging a variable in order and dividing the distribution into 5 equal bins. A district in the $1^{st}$ quintile for harsh punishments per student is one of the 20% of districts with the fewest harsh punishments per student.
+
+* Harsh punishments are defined here as:
+
+  * Out of school suspension
+  * Juvenile court referral
+  * Physical restraint
+  * Corporal punishment
+  * Permanent expulsion
+  
+* FRL = Free and Reduced-Price Lunch Status. Because this is related to family income, this is often used as a crude approximation of a child coming from a low-income family. 
+  
+**Data**
+
+The data set represents 2,141 schools in 198 districts across the state of Georgia, and merges data from the [Governer's Office of Student Achievement](https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data) and the [Georgia Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx). 
+
+
+Column {data-width=750}
+-----------------------------------------------------------------------
+### Figure 1. Interactive Map 
 
 ```{r}
 plotly_map1 
 ```
 
+School Admin
+===
+
 
 Column {data-width=350}
 -----------------------------------------------------------------------
 
-### Chart B
+### Profiles of Schools
+
+**How exactly do schools who give many harsh punishments per student compare to those who give few?**
+
+**Figure 2** compares demographic characteristics for schools with the fewest and most harsh punishments per student at the school and district level. Schools which give the most harsh punishments per student have many more free/reduced-price lunch eligible students than those who give the least. These schools also have many more black students and many fewer white students. Similar differences can be seen at the district level.
+
+**How does the number of harsh punishments per school increase with percent black students in the school?**
+
+**Table 1** shows schools in the bottom 20% of percent black students
+
+### Table 1
 
 ```{r}
 percent_change_1 %>% 
   round(digits = 3) %>% 
   gt() %>% 
   tab_header(
-    title = '',
-  )
-
-percent_change_2 %>% 
-  round(digits = 3) %>% 
-  gt() %>% 
-  tab_header(
-    title = '',
+    title = 'Increase in Harsh Punishments with Quintile of Percent Black Students',
   )
 ```
 
-### Chart C
-
-
-School Admin
-===
 
 Column {data-width=650}
 -----------------------------------------------------------------------
-### Chart A
+### Figure 2. Characteristics of schools with the most harsh punishments per student versus those with the fewest
 
 ```{r}
-#formatted_TA_plot
-```
-
-
-
-Column {data-width=350}
------------------------------------------------------------------------
-
-### Chart B
-
-```{r}
-
+gridExtra::grid.arrange(school_plot, district_plot) 
 ```
 
 Researchers
 ===
 
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart A
+
 ```{r}
-tree
+
+```
+
+
+### Chart B
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Chart C
+
+```{r, fig.width = 7.95, fig.height = 6.19}
+#fig.width=9.86, fig.height=6.19
+tree_pic <- png::readPNG(here::here('Data', 'tree_plot.png')) 
+grid::grid.raster(tree_pic)
 ```
 
 ```{r, include = F, eval = F}
