@@ -261,12 +261,9 @@ district_plot <-
 
   ## CONSIDER CALCULATING STANDARD ERRORS
   ## TALK ABOUT THESE AS INTERVENTION TARGETS
-
-
-
 ```
 
-```{r eval=FALSE, include=FALSE}
+```{r}
 lmertree_TA <- dat_final %>% 
   mutate(`% Black` = perc_black, 
          `School Type` = fac_schtype,
@@ -300,13 +297,9 @@ asterisk_sign <- function(p_value) {
   if (p_value < 0.05) return(c("p_value < 0.05"))
   else return("")
 }
-
 ```
 
 ```{r eval=FALSE, include=FALSE}
-
- ## if we add the line back in with the replace_na() then it works out
- ## now it changes the plot
 tree <-
 ggparty(p1) +
   geom_edge(size = 1.2) +
@@ -326,51 +319,7 @@ ggparty(p1) +
           panel.grid.major.x = element_blank()
           ),
     lims(y = c(0, 1.5))), 
-    shared_axis_labels = T)+
-  # geom_node_plot(ids = c(3, 4, 7, 8),
-  #   gglist = list(
-  #   geom_point(
-  #     aes(
-  #       x = `% FRL`,
-  #       y = harsh_ps,
-  #       #color = `School Type`
-  #       ),
-  #     alpha = 0.7),
-  #   geom_smooth(
-  #     method = 'lm', se = F,
-  #     aes(
-  #       x = `% FRL`,
-  #       #color = `School Type`,
-  #       y = harsh_ps),
-  #     alpha = 0.7),
-  #   scale_color_OkabeIto(),
-  #   lims(y = c(0,1.5)),
-  #   labs(y = 'Punishments/Student'),
-  #   theme_minimal()), 
-  #   shared_axis_labels = F, 
-  #   shared_legend = T) + 
-  # geom_node_plot(ids = c(10, 11),
-  #   gglist = list(
-  #   geom_point(#show.legend = F,
-  #     aes(
-  #       x = `% Black`,# <= 43,
-  #       #color = `School Type`,
-  #       y = harsh_ps),
-  #     alpha = 0.7),
-  #   geom_smooth(#show.legend = F,
-  #     method = 'lm',
-  #     se = F,
-  #     aes(
-  #       x = `% Black`,# >= 43,
-  #       #color = `School Type`,
-  #       y = harsh_ps),
-  #     alpha = 0.7),
-  #   scale_color_OkabeIto(),
-  #   lims(y = c(0,1.5)), #x = c(0,1)),
-  #   labs(y = 'Punishments/Student', 
-  #        x = '% Black'),
-  #   theme_minimal())) +
-  geom_node_label(# label nodes with ID, split variable and p value
+    shared_axis_labels = T) +
                   line_list = list(aes(label = paste('N = ' , nodesize)),
                                    aes(label = splitvar),
                                    aes(label = asterisk_sign(p.value))),
@@ -514,6 +463,8 @@ In a school setting, student discipline is not completely objective. School admi
 
   
 * *Free and Reduced-Price Lunch Status* (FRL) is related to family income and is used as a crude approximation of a child coming from a low-income family. 
+
+* *English for Speakers of Other Languages* (ESOL)
   
 **Data**
 
@@ -548,12 +499,11 @@ Column {data-width=350}
 
 Column {data-width=650, .tabset}
 -----------------------------------------------------------------------
-### Figure 2. 
+### Figure 2. Final
 
 ```{r}
 gridExtra::grid.arrange(school_plot, district_plot) 
 ```
-
 
 ### Tables
 
@@ -572,7 +522,38 @@ percent_change_1 %>%
   tab_header(
     title = 'Table 2. Increase in Harsh Punishments with Quintile of Percent Black Students',
   )
+```
 
+### Figure 2. Initial
+
+```{r}
+comparison_schools %>% 
+  ggplot(aes(y = 
+               fct_reorder(demographics, percent), 
+             x = percent, 
+             fill = category)) + 
+  geom_col() +
+  labs(fill = 'Harsh Punishments Per Student', 
+       title = 'School Characteristics',
+       y = '', 
+       x = 'Percent (%)') +
+  theme_minimal() + 
+  theme(legend.position = 'bottom', 
+        plot.title.position = 'plot')
+
+comparison_districts %>% 
+  ggplot(aes(y = 
+               fct_reorder(district_demographics, percent), 
+             x = percent, 
+             fill = category)) + 
+  geom_col() + 
+  labs(fill = 'Harsh Punishments Per Student', 
+       title = 'District Characteristics',
+       y = '', 
+       x = 'Percent (%)') +
+  theme_minimal() + 
+  theme(legend.position = 'bottom', 
+        plot.title.position = 'plot')
 ```
 
 
@@ -607,16 +588,53 @@ The model predicts *middle and high schools with less than ~61% FRL eligible stu
 This provides evidence that there is significant inequity in distribution of harsh punishments per student across schools, family income (i.e., FRL status), and percent black students. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity. 
 
 
-Column {data-width=650}
+Column {data-width=650, .tabset}
 -----------------------------------------------------------------------
 
-### Figure 3.
+### Figure 3. Final
 
 ```{r, fig.width = 6.18, fig.height = 6.17}
-#fig.width=9.86, fig.height=6.19
 tree_pic <- png::readPNG(here::here('Data', 'tree_plot.png')) 
 grid::grid.raster(tree_pic)
 ```
+
+### Figure 3. Initial
+
+```{r}
+plot(lmertree_TA, which = 'tree', ask = F)
+```
+### Figure 3. Second
+
+```{r}
+# temp <- ggparty(p1) +
+#   geom_edge(size = 1.2) +
+#   geom_edge_label() +
+#   geom_node_label(aes(label = splitvar), 
+#                   ids = "inner") +
+#   geom_node_plot(gglist = list(
+#     geom_boxplot(aes(y = harsh_ps, 
+#                      color = `School Type`)), 
+#     labs(y = 'Punishments/Student'),
+#     theme_minimal()), 
+#     shared_axis_labels = T)+
+#   geom_node_label(# label nodes with ID, split variable and p value
+#                   line_list = list(aes(label = paste('N = ' , nodesize)),
+#                                    aes(label = splitvar),
+#                                    aes(label = asterisk_sign(p.value))),
+#                   # set graphical parameters for each line
+#                   line_gpar = list(list(#size = 8,
+#                                         col = "black",
+#                                         fontface = "bold"),
+#                                    list(size = 12),
+#                                    list(size = 8)
+#                                    ),
+#                   ids = "inner") 
+# 
+# ggsave('tree_plot_initial.png', temp, path = here::here('Data'))
+tree_pic_initial <- png::readPNG(here::here('Data', 'tree_plot_initial.png'))
+grid::grid.raster(tree_pic_initial)
+```
+
 
 ```{r, include = F, eval = F}
 t1 <-tibble(.rows = 1)
