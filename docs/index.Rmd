@@ -25,10 +25,9 @@ library(plotly)
 library(colorblindr)
 library(ggparty)
 library(gganimate)
+library(mice)
 options(tigris_use_cache = TRUE)
 options(tigris_class = "sf")
-
-
 ```
 
 
@@ -66,7 +65,6 @@ school_demos <- import(
             perc_black = enroll_percent_black,
             perc_hisp = enroll_percent_hispanic, 
             perc_white = enroll_percent_white, 
-            perc_non_white = 100-perc_white, 
             perc_migrant = enroll_percent_migrant, 
             perc_esol = enroll_pct_esol
             )
@@ -88,7 +86,7 @@ disc_action <- import(
 
 
 dat <- disc_action %>% 
-  inner_join(schools) %>% # if this is left_join I have to impute
+  left_join(schools) %>% # if this is left_join I have to impute
   group_by(system_name) %>% 
   mutate(harsh =
            out_of_school_suspension_oss +
@@ -97,27 +95,13 @@ dat <- disc_action %>%
            corporal_punishment +
            permanent_expulsion, # +
            #in_school_suspension_iss,
-         harsh_ps = harsh/total, 
-         harsh_per_100 = harsh_ps*100,
          district = factor(system_name),
          school_name = factor(school_name), 
          fac_schtype = factor(fac_schtype), 
          perc_frl = kk_12_percent_frl 
          ) %>% 
-  mutate(district_size = sum(total, na.rm = T), 
-         d_black = sum(total*perc_black, na.rm = T)/district_size, 
-         d_hisp = sum(total*perc_hisp, na.rm = T)/district_size, 
-         d_non_white = sum(total*perc_non_white, na.rm = T)/district_size, 
-         d_white = sum(total*perc_white, na.rm = T)/district_size, 
-         d_esol = sum(total*perc_esol, na.rm = T)/district_size,
-         d_migrant = sum(total*perc_migrant, na.rm = T)/district_size,
-         d_frl = sum(total*kk_12_percent_frl, na.rm = T)/district_size, 
-         d_harsh = sum(harsh, na.rm = T)/district_size) %>% 
-  ungroup() 
-dat_small <- 
-  dat %>% 
   select(district, 
-         district_size, 
+         #district_size, 
          school_name, 
          fac_schtype, 
          total,
@@ -130,29 +114,52 @@ dat_small <-
          contains('harsh')) %>% 
   select(-kk_12_percent_frl)
 
-dat_long <- dat_small %>% 
-  pivot_longer(contains('perc'), 
-               names_to = 'school_demos', 
-               names_prefix = 'perc_', 
+imputed <- dat %>% 
+  select(total:harsh) %>% 
+  mice::mice(m = 1, seed = 12345, remove.collinear = T) %>% 
+  mice::complete(1)
+
+dat_imp <- dat %>%
+  select(district, school_name, fac_schtype) %>%
+  bind_cols(imputed)
+
+dat_final <- dat_imp %>%
+  mutate(harsh_ps = harsh/total, 
+         harsh_per_100 = harsh_ps*100, 
+         perc_non_white = 100-perc_white) %>% 
+  group_by(district) %>% 
+  mutate(district_size = sum(total, na.rm = T),
+         d_black = sum(total*perc_black, na.rm = T)/district_size,
+         d_hisp = sum(total*perc_hisp, na.rm = T)/district_size,
+         d_non_white = sum(total*perc_non_white, na.rm = T)/district_size,
+         d_white = sum(total*perc_white, na.rm = T)/district_size,
+         d_esol = sum(total*perc_esol, na.rm = T)/district_size,
+         d_migrant = sum(total*perc_migrant, na.rm = T)/district_size,
+         d_frl = sum(total*perc_frl, na.rm = T)/district_size,
+         d_harsh = sum(harsh, na.rm = T)/district_size) %>%
+  ungroup()
+
+dat_long <- dat_final %>%
+  pivot_longer(contains('perc'),
+               names_to = 'school_demos',
+               names_prefix = 'perc_',
                values_to = 'percents')
 
-#dat_small[rowSums(is.na(dat_small)) > 0,]
+#dat_final[rowSums(is.na(dat_final)) > 0,]
 
-rm(list=setdiff(ls(), c("dat", 'dat_small', 'dat_long')))
-
-
+rm(list=setdiff(ls(), c('dat_final', 'dat_long')))
 ```
 
 ```{r, include = F, echo = F}
 target_schools <- 
-  dat_small %>% 
+  dat_final %>% 
   mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
   filter(harsh_10 == 10) %>% 
   map_dfr(mean, na.rm = T) %>% 
   mutate(category = '90th percentile')
 
 exemplar_schools <- 
-  dat_small %>% 
+  dat_final %>% 
   mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
   filter(harsh_10 == 1) %>% 
   map_dfr(mean, na.rm = T) %>% 
@@ -254,11 +261,16 @@ district_plot <-
 
   ## CONSIDER CALCULATING STANDARD ERRORS
   ## TALK ABOUT THESE AS INTERVENTION TARGETS
+
+
+
 ```
 
 ```{r eval=FALSE, include=FALSE}
-lmertree_TA <- dat_small %>% 
-  mutate(`% Black` = perc_black, `School Type` = fac_schtype) %>% 
+lmertree_TA <- dat_final %>% 
+  mutate(`% Black` = perc_black, 
+         `School Type` = fac_schtype,
+         `% FRL` = perc_frl) %>% 
   lmertree(
      formula = 
        harsh_ps ~ 1 | 
@@ -269,7 +281,7 @@ lmertree_TA <- dat_small %>%
        perc_hisp + 
        perc_migrant + 
        perc_esol + 
-       perc_frl +
+       `% FRL` +
        d_black + 
        d_hisp + 
        d_migrant + 
@@ -277,7 +289,8 @@ lmertree_TA <- dat_small %>%
        d_frl, 
      alpha = 0.001, 
      bonferroni = T, 
-     minsize = 224)
+     cluster = district,
+     minsize = 230)
 
 p1 <- lmertree_TA$tree[1]
 
@@ -301,23 +314,62 @@ ggparty(p1) +
   geom_node_label(aes(label = splitvar), 
                   ids = "inner") +
   geom_node_plot(gglist = list(
-    geom_point(
-      aes(
-        x = `% Black`,
-        y = harsh_ps,
-        color = `School Type`),
-      alpha = 0.7),
-    geom_smooth(
-      method = 'lm',
-      aes(
-        x = `% Black`,
-        color = `School Type`,
-        y = harsh_ps),
-      alpha = 0.7),
-    lims(y = c(0,1)),
+    geom_boxplot(aes(y = harsh_ps, 
+                     color = `School Type`)), 
     labs(y = 'Punishments/Student'),
-    theme_minimal()), 
-    shared_axis_labels = T) + 
+    theme_minimal(),
+    theme(axis.text.x = element_blank(), 
+          axis.ticks.x = element_blank(), 
+          axis.line.x = element_line(size = 1.5), 
+          axis.line.y = element_line(size = 1.5), 
+          panel.grid.minor.x = element_blank(), 
+          panel.grid.major.x = element_blank()
+          ),
+    lims(y = c(0, 1.5))), 
+    shared_axis_labels = T)+
+  # geom_node_plot(ids = c(3, 4, 7, 8),
+  #   gglist = list(
+  #   geom_point(
+  #     aes(
+  #       x = `% FRL`,
+  #       y = harsh_ps,
+  #       #color = `School Type`
+  #       ),
+  #     alpha = 0.7),
+  #   geom_smooth(
+  #     method = 'lm', se = F,
+  #     aes(
+  #       x = `% FRL`,
+  #       #color = `School Type`,
+  #       y = harsh_ps),
+  #     alpha = 0.7),
+  #   scale_color_OkabeIto(),
+  #   lims(y = c(0,1.5)),
+  #   labs(y = 'Punishments/Student'),
+  #   theme_minimal()), 
+  #   shared_axis_labels = F, 
+  #   shared_legend = T) + 
+  # geom_node_plot(ids = c(10, 11),
+  #   gglist = list(
+  #   geom_point(#show.legend = F,
+  #     aes(
+  #       x = `% Black`,# <= 43,
+  #       #color = `School Type`,
+  #       y = harsh_ps),
+  #     alpha = 0.7),
+  #   geom_smooth(#show.legend = F,
+  #     method = 'lm',
+  #     se = F,
+  #     aes(
+  #       x = `% Black`,# >= 43,
+  #       #color = `School Type`,
+  #       y = harsh_ps),
+  #     alpha = 0.7),
+  #   scale_color_OkabeIto(),
+  #   lims(y = c(0,1.5)), #x = c(0,1)),
+  #   labs(y = 'Punishments/Student', 
+  #        x = '% Black'),
+  #   theme_minimal())) +
   geom_node_label(# label nodes with ID, split variable and p value
                   line_list = list(aes(label = paste('N = ' , nodesize)),
                                    aes(label = splitvar),
@@ -337,13 +389,12 @@ ggparty(p1) +
   labs(title = 'Mixed Effects Regression Tree of Harsh Punishments per Students') +
   theme(plot.title = element_text(hjust = 0.5))
 
-tree
+
 ggsave('tree_plot.png', tree, path = here::here('Data'))
 ```
 
-
 ```{r, echo = F}
-summary_1 <- dat_small %>% 
+summary_1 <- dat_final %>% 
   mutate(`Quintile of Percent Black Students` = ntile(perc_black, 5)) %>% 
   group_by(`Quintile of Percent Black Students`) %>% 
   summarize(`Average Percent Black Students in Quintile` = mean(perc_black), 
@@ -354,6 +405,18 @@ comparison_1 <- summary_1$`Average Harsh Punishments per Student`[1]
 percent_change_1 <- summary_1 %>% 
   mutate(`% Increase in Punishments from 1st` = 
            (`Average Harsh Punishments per Student`- comparison_1)/comparison_1*100)
+
+summary_2 <- dat_final %>% 
+  mutate(`Quintile of Percent FRL` = ntile(perc_frl, 5)) %>% 
+  group_by(`Quintile of Percent FRL`) %>% 
+  summarize(`Average Percent FRL in Quintile` = mean(perc_frl), 
+           `Average Harsh Punishments per Student` = mean(harsh_ps))
+
+comparison_2 <- summary_2$`Average Harsh Punishments per Student`[1]
+
+percent_change_2 <- summary_2 %>% 
+  mutate(`% Increase in Punishments from 1st` = 
+           (`Average Harsh Punishments per Student`- comparison_2)/comparison_2*100)
 
 ```
 
@@ -379,7 +442,7 @@ GA_sf <-
 #disc_demo %>% filter(system_name == 'Macon County')
 
 dat_district <- 
-  dat_small %>% 
+  dat_final %>% 
   select(district, district_size, starts_with('d_')) %>% 
   unique()
 
@@ -428,7 +491,7 @@ plotly_map1 <-
 General 
 ===
 
-Column {data-width=250}
+Column {data-width=350}
 -----------------------------------------------------------------------
 
 ### Introduction
@@ -441,22 +504,23 @@ In a school setting, student discipline is not completely objective. School admi
 
 * A *quintile* is exactly 20% (or $\frac1{5^{th}}$) of the population; these are formed by arranging a variable in order and dividing the distribution into 5 equal bins. A district in the $1^{st}$ quintile for harsh punishments per student is one of the 20% of districts with the fewest harsh punishments per student.
 
-* Harsh punishments are defined here as:
+* *Harsh punishments* are punishments that either remove students from the school or involve physically disciplining students. The disciplinary actions reported that match this definition include:
 
   * Out of school suspension
   * Juvenile court referral
+  * Permanent expulsion
   * Physical restraint
   * Corporal punishment
-  * Permanent expulsion
+
   
-* FRL = Free and Reduced-Price Lunch Status. Because this is related to family income, this is often used as a crude approximation of a child coming from a low-income family. 
+* *Free and Reduced-Price Lunch Status* (FRL) is related to family income and is used as a crude approximation of a child coming from a low-income family. 
   
 **Data**
 
 The data set represents 2,141 schools in 198 districts across the state of Georgia, and merges data from the [Governer's Office of Student Achievement](https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data) and the [Georgia Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx). 
 
 
-Column {data-width=750}
+Column {data-width=650}
 -----------------------------------------------------------------------
 ### Figure 1. Interactive Map 
 
@@ -475,218 +539,83 @@ Column {data-width=350}
 
 **How exactly do schools who give many harsh punishments per student compare to those who give few?**
 
-**Figure 2** compares demographic characteristics for schools with the fewest and most harsh punishments per student at the school and district level. Schools which give the most harsh punishments per student have many more free/reduced-price lunch eligible students than those who give the least. These schools also have many more black students and many fewer white students. Similar differences can be seen at the district level.
+**Figure 2** compares demographic characteristics for schools with the fewest and most harsh punishments per student at the school and district level. Schools which give the most harsh punishments per student have many more free/reduced-price lunch eligible students than those who give the least. These schools also have many more black students and many fewer white students. Similar differences can be seen at the district level. This necessitates both a deeper investigation into the equity in use of these harsh punishments and exploration of possible alternative punishments that allow students to learn from mistakes in a school setting. Teachers and Administration in districts with such demographics should 
 
-**How does the number of harsh punishments per school increase with percent black students in the school?**
+**How much does disciplinary action change across percent FRL Eligible and percent black students per school?**
 
-**Table 1** shows schools in the bottom 20% of percent black students
-
-### Table 1
-
-```{r}
-percent_change_1 %>% 
-  round(digits = 3) %>% 
-  gt() %>% 
-  tab_header(
-    title = 'Increase in Harsh Punishments with Quintile of Percent Black Students',
-  )
-```
+**Table 1** & **Table 2** explore these differences. Comparing schools with the most FRL eligible to the least shows 400x more harsh punishments in the former than the latter; similar comparisons for percent black students show almost 350x more harsh punishments in schools with the highest percent black students compared to those with the lowest percent black students. 
 
 
-Column {data-width=650}
+Column {data-width=650, .tabset}
 -----------------------------------------------------------------------
-### Figure 2. Characteristics of schools with the most harsh punishments per student versus those with the fewest
+### Figure 2. 
 
 ```{r}
 gridExtra::grid.arrange(school_plot, district_plot) 
 ```
 
-Researchers
-===
 
-Column {data-width=350}
------------------------------------------------------------------------
-
-### Chart A
+### Tables
 
 ```{r}
+
+percent_change_2 %>% 
+  round(digits = 2) %>% 
+  gt() %>% 
+  tab_header(
+    title = 'Table 1. Increase in Harsh Punishments with Quintile of FRL Elibible Students',
+  )
+
+percent_change_1 %>%
+  round(digits = 2) %>%
+  gt() %>%
+  tab_header(
+    title = 'Table 2. Increase in Harsh Punishments with Quintile of Percent Black Students',
+  )
 
 ```
 
 
-### Chart B
+Researchers
+===
+
+Column {data-width=350, .tabset}
+-----------------------------------------------------------------------
+
+### Description 
+
+Parameter instability tests are relatively infrequently used tools in education, probably because their long-standing inability to take into account nested data structures (like those made by schools nested in districts). Recent advancements from [Zeileis, Hothorn, and Hornik's (2008)](https://www.tandfonline.com/doi/abs/10.1198/106186008X319331) general linear model regression trees have extended them to incorporate such nesting, thanks to [Fokkema & Zeileis (2018)](https://pubmed.ncbi.nlm.nih.gov/29071652/). Such models are extremely powerful and flexible. They use recursive partitioning to find subgroup differences in any regression model, as well as determining which variables moderate the relationship specified to varying degrees. 
+
+These models allow you to specify a mixed-effect model and provide partitioning variables. After accounting for level-2 variance, the model runs many linear models and determines which parameters differ along partitioning variables. A variant of an *F* test is then used to determine if differences among partitioning variables are significant at a pre-specified alpha, controlling for inflation with Bonferroni corrections. If these differences are significant, subsequent splits can be identified, which would suggest an interactive effect.
+
+Single imputation was used to fill missing data. The model shown here only reports group differences at the *p* < 0.001, after Bonferroni corrections, and with the minimum acceptable node as as 10% of the total sample (i.e., 230 schools/node).
+
+An intercept-only model was fit for Harsh Discipline per student at the school level. Conditional variances were specified such that schools were nested in their districts. The model explored for parameter instability across level-1 and level-2 with all school- and district-level covariates (e.g., percent racial/ethnic composition, percent FRL status, percent English second language, and percent migrant students). 
+
+### Results
+
+**Figure 3** shows results of this exploratory model
+
+The variable which shows the greatest inequity in harsh punishments per student is school type, with middle and high schools displaying higher average harsh punishments per student than elementary and K-12 schools. Among middle and high schools, schools with higher than ~61% FRL eligible student have higher average harsh punishments per student than those with less than ~61%. 
+
+Among elementary and middle schools, the variable which creates greatest instability in estimation of the intercept is percent black students, with schools that have more than 35% black students displaying higher average harsh punishments per student. 
+
+An important note here is that the figure actually shows the entire distribution across elementary and middle schools, but many outliers for middle and high schools were omitted from this visualization to make comparison of the average and interquartile ranges easier. 
+
+The model predicts *middle and high schools with less than ~61% FRL eligible students* will average **1 harsh punishment for every 9 students**. In *middle and high schools with more than ~61% FRL eligible students*, this number increases to over **1 harsh punishment for every 4 students**. In *elementary and K-12 schools with less than 35% black students*, we see only **1 harsh punishment per every 20 students**. For *elementary and K-12 schools with more than 35% black students*, we see more than **1 harsh punishment per every 10 students**.
+
+This provides evidence that there is significant inequity in distribution of harsh punishments per student across schools, family income (i.e., FRL status), and percent black students. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity. 
+
 
 Column {data-width=650}
 -----------------------------------------------------------------------
 
-### Chart C
+### Figure 3.
 
-```{r, fig.width = 7.95, fig.height = 6.19}
+```{r, fig.width = 6.18, fig.height = 6.17}
 #fig.width=9.86, fig.height=6.19
 tree_pic <- png::readPNG(here::here('Data', 'tree_plot.png')) 
 grid::grid.raster(tree_pic)
-```
-
-```{r, include = F, eval = F}
-lmer <- lmer(data = dat_small, 
-     formula = 
-       harsh ~
-       total +
-       fac_schtype + 
-       perc_black + 
-       perc_hisp + 
-       perc_migrant + 
-       perc_esol + 
-       frl +
-       d_black + 
-       d_hisp + 
-       d_migrant + 
-       d_esol + 
-       d_frl +
-       (1 | district))
-
-summary(lmer)
-
-
-
-lmertree <- 
-  lmertree(data = dat_small, 
-     formula = 
-       harsh ~ total + perc_black | 
-       (1 | district/fac_schtype) | 
-       total +
-       fac_schtype + 
-       perc_black + 
-       perc_hisp + 
-       perc_migrant + 
-       perc_esol + 
-       frl +
-       d_black + 
-       d_hisp + 
-       d_migrant + 
-       d_esol + 
-       d_frl, 
-     alpha = 0.001, 
-     bonferroni = T, 
-     minsize = 224)
-
-lmertree
-summary(lmertree$tree)
-
-sqrt(sum(residuals(lmertree)^2))
-sqrt(sum(residuals(lmer)^2))
-
-plot(lmertree, ask = F, which = 'all')
-
-
-py <- lmertree$tree[1]
-
-ggparty(py) +
-  geom_edge() +
-  geom_edge_label() +
-  geom_node_label(aes(label = splitvar), ids = "inner") +
-  geom_node_plot(gglist = list(geom_point(aes(x = perc_black, y = harsh, color = perc_black),
-                                          alpha = 0.5
-    # geom_density(aes(x = harsh_per_100)), lims(x = c(0,100))
-    #                            #xlab("play")
-    ), geom_smooth(aes(x = perc_black, y = harsh), se = T, method = 'lm')))
-
-```
-
-```{r, include = F, eval = F}
-dat_small <- 
-  dat_small %>% 
-  mutate(prediction = predict(lmertree))
-
-dat_small %>% 
-  ggplot(aes(x = prediction, y = harsh)) + 
-  geom_point(aes(color = perc_black, shape = fac_schtype), alpha = 0.5) +
-  coord_fixed() + 
-  lims(x = c(0, 2500), y = c(0,2500)) + 
-  geom_abline(intercept = 0, slope = 1) + 
-  facet_wrap(~fac_schtype)
-
-dat_small <- dat_small %>% 
-  mutate(difference = abs(harsh - prediction), 
-         act_difference = harsh - prediction, 
-         sign = if_else(harsh - prediction < 0, 0, 1), # positives have higher than predicted
-         difference_rank = factor(ntile(difference, 10)), 
-         very_bad = factor(if_else(difference_rank %in% c(10), 1, 0)))
-
-
-
-unusual_schools <-
-  glmer(data = dat_small,
-     formula = sign ~ 
-       #harsh +
-       #total +
-       fac_schtype + 
-       perc_black + 
-       perc_hisp + 
-       perc_migrant + 
-       perc_esol + 
-       frl +
-       d_black +
-       d_hisp +
-       d_migrant +
-       d_esol +
-       d_frl +
-       (1 | district), 
-     family = 'binomial'
-     ) 
-
-summary(unusual_schools)
-
-dat_small %>% 
-  ggplot(aes(x = prediction, y = harsh)) + 
-  geom_point(aes(color = very_bad, shape = fac_schtype), alpha = 0.5) +
-  coord_fixed() + 
-  lims(x = c(0, 2500), y = c(0,2500)) + 
-  geom_abline(intercept = 0, slope = 1) + 
-  facet_wrap(~fac_schtype)
-```
-
-```{r, include = F, eval = F}
-misfits <- 
-  dat_small %>%
-  filter(very_bad == 1) 
-  # group_by(sign) %>% 
-  # summarize(average_perc_black = mean(perc_black))
-
-rf_def_mod <-
-  rand_forest() %>%
-  set_engine("ranger",
-             num.threads = cores, #argument from {ranger}
-             importance = "permutation", #argument from {ranger}
-             verbose = TRUE) %>% #argument from {ranger} 
-  set_mode("classification")
-
-```
-
-
-```{r, include = F, eval = F}
-agg_disc_perc_complete %>% 
-  mutate(lm1 = predict(lm1)) %>% 
-  ggplot(aes(x = lm1, y = harsh)) + 
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1) + 
-  lims(x = c(0, .3), y = c(0, .3))
-
-
-disagg_perc_complete %>% 
-  mutate(lm2 = predict(lm2)) %>% 
-  ggplot(aes(x = lm2, y = harsh)) + 
-  geom_point()+
-  geom_abline(intercept = 0, slope = 1) + 
-  lims(x = c(0, .3), y = c(0, .3))
-
-disagg_perc_complete %>% 
-  mutate(lmer1 = predict(lmer1)) %>% 
-  ggplot(aes(x = lmer1, y = harsh)) + 
-  geom_point()+
-  geom_abline(intercept = 0, slope = 1) + 
-  lims(x = c(0, .3), y = c(0, .3))
-
 ```
 
 ```{r, include = F, eval = F}
