@@ -30,7 +30,7 @@ options(tigris_use_cache = TRUE)
 options(tigris_class = "sf")
 ```
 
-```{r, echo = F}
+```{r eval=FALSE, include=FALSE}
 frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report_Schools.csv")) %>% 
   clean_names() %>% 
   mutate(kk_12_percent_frl = as.numeric(kk_12_percent_frl) 
@@ -122,10 +122,19 @@ dat_imp <- dat %>%
   select(district, school_name, fac_schtype) %>%
   bind_cols(imputed)
 
+dat_imp %>% export(here('Data', 'Imputed.csv'))
+```
+
+```{r}
+dat_imp <- import(here('Data', 'Imputed.csv')) %>% 
+  select(-contains('...'))
+
 dat_final <- dat_imp %>%
   mutate(harsh_ps = harsh/total, 
          harsh_per_100 = harsh_ps*100, 
-         perc_non_white = 100-perc_white) %>% 
+         perc_non_white = 100-perc_white, 
+         district = factor(district),
+         school_name = factor(school_name)) %>% 
   group_by(district) %>% 
   mutate(district_size = sum(total, na.rm = T),
          d_black = sum(total*perc_black, na.rm = T)/district_size,
@@ -144,7 +153,7 @@ dat_long <- dat_final %>%
                names_prefix = 'perc_',
                values_to = 'percents')
 
-#dat_final[rowSums(is.na(dat_final)) > 0,]
+
 
 rm(list=setdiff(ls(), c('dat_final', 'dat_long')))
 ```
@@ -175,6 +184,7 @@ comparison_schools %>%
              x = percent)) + 
   geom_jitter(aes(color = category, 
                   shape = category), 
+              size = 2,
               width = 0,
               alpha = 0.6) + 
   lims(x = c(0,100)) +
@@ -197,7 +207,8 @@ comparison_schools %>%
   labs(x = 'Percent of School (%)', 
        y = '', 
        color = 'Harsh Punishments per Student', 
-       shape = 'Harsh Punishments per Student') +
+       shape = 'Harsh Punishments per Student', 
+       caption = 'Most = top 10%; Least = bottom 10%') +
   theme_minimal() + 
   scale_color_OkabeIto()
 ```
@@ -206,7 +217,7 @@ comparison_schools %>%
 school_animation <- 
   school_plot + 
   transition_states(states = category, transition_length = 2) + 
-  labs(title = 'Demographics of Schools with the {closest_state} 
+  labs(title = 'Schools with the {closest_state} 
 Harsh Punishments per Student') + 
   theme(plot.title = element_text(hjust=0.5, size=rel(3)), 
         #plot.caption = element_text(hjust=0.5, size=rel(3)), 
@@ -219,17 +230,18 @@ Harsh Punishments per Student') +
   exit_fade() 
 
 school_gif <- animate(school_animation, 
-                        nframes = 100, 
-                        height = 600, 
-                        width = 800, 
-                        start_pause = 5, 
-                        end_pause = 5)
+                      nframes = 10, 
+                      fps = 1,
+                      height = 600, 
+                      width = 800 
+                      )
 ```
 
 ```{r}
+#library(glmertree)
 lmertree_TA <- dat_final %>% 
   mutate(`% Black` = perc_black, 
-         `School Type` = fac_schtype,
+         `School Type` = factor(fac_schtype),
          `% FRL` = perc_frl) %>% 
   lmertree(
      formula = 
@@ -302,7 +314,7 @@ tree <-
   theme(plot.title = element_text(hjust = 0.5))
 
   
-ggsave('tree_plot.png', tree, path = here::here('Data'))
+#ggsave('tree_plot.png', tree, path = here::here('Data'))
 ```
 
 ```{r}
@@ -377,7 +389,7 @@ GA_districts <-
 
 ```{r}
 b_map <- GA_districts %>% 
-  mutate(`Quintile Harsh Punishment` = harsh_qt,
+  mutate(`Harsh Punishments per Student` = round(d_harsh, 2), 
     Demographics = paste('\n', '(', district, ')',
                          '\n', round(d_black, 1), '% Black', 
                          '\n', round(d_hisp, 1), '% Hispanic', 
@@ -386,19 +398,12 @@ b_map <- GA_districts %>%
                          sep = "")
          ) %>% 
   ggplot(aes(geometry = geometry)) + 
-  geom_sf(aes(fill = `Quintile Harsh Punishment`, text = Demographics)) +
-  scale_fill_manual(
-    values =
-      c('#a9c2f4',
-        '#7ca2ee',
-        '#4f82e8',
-        '#2262e2',
-        '#184eb9'),
-    na.value = '#6a6b6c') +
+  geom_sf(aes(fill = `Harsh Punishments per Student`, text = Demographics)) +
+  scale_fill_distiller(palette = "Blues", direction = -1) + 
+  theme(legend.position = 'bottom') +
   theme_void()  +
-  labs(fill = 'Quintile Harsh Punishments',
-       title = 'Distribution Harsh Punishments per Student')
-
+  labs(fill = 'Harsh Punishments per Student',
+       title = 'Distribution Harsh Punishments per Student') 
 
 plotly_map1 <- 
   ggplotly(b_map) 
@@ -415,11 +420,31 @@ Column {data-width=350, .tabset}
 
 **Background**
 
-As a former teacher and prevention scientist, I can say confidently that administrators do not give disciplinary action to students in a completely objective manner. To be fair, administrators are human, and all humans bring bias into their decision-making process. However, when the bias clearly follows demographic characteristics (e.g., race-ethnicity, income, etc.) and when it influences the life course of a young person, it cannot be ignored.
+As a former teacher and a prevention scientist, I can say disciplinary actions are given to students inequitably; sometimes this can be chalked up to circumstantial differences, but often it's due to biases carried by the administration.
 
-Bias in disciplinary action has been studied formally across US schools, with much of the results echoing the [disproportionate "exclusionary" disciplinary actions given to black students](https://epaa.asu.edu/ojs/article/viewFile/2787/1911), compared to black students' other-racial-ethnic counterparts, particularly white students. Exclusionary disciplinary action is any action which removes a student from the school (e.g., suspension, expulsion, etc.). Such exclusionary punishments are shown to [contribute directly to the school-to-prison pipeline](https://www.tandfonline.com/doi/full/10.1080/10665684.2014.958965). This is not meant to be a deep-dive into the literature, but this [Google Scholar](https://scholar.google.com/scholar?hl=en&as_sdt=0%2C38&q=inequity+in+student+discipline&btnG=) link can get you started if you're interested.
+Such inequities manifest as [black students recieving a disproportionate number of "exclusionary" disciplinary actions](https://epaa.asu.edu/ojs/article/viewFile/2787/1911), compared to their other racial-ethnic counterparts—particularly white students. 
 
+"Exclusionary disciplinary action" is any action which removes a student from the school (e.g., suspension, expulsion, etc.). Such exclusionary punishments are shown to [contribute directly to the school-to-prison pipeline](https://www.tandfonline.com/doi/full/10.1080/10665684.2014.958965). This is not meant to be a deep-dive into the literature, but this [Google Scholar](https://scholar.google.com/scholar?hl=en&as_sdt=0%2C38&q=inequity+in+student+discipline&btnG=) link can get you started if you're interested. 
 
+Other punishments besides these exclusionary actions can be detrimental to a child's perceived belonging, trust in the school as an institution, and feeling of safety. Georgia — among other states — retains an antiquated form of student discipline, which can have iatrogenic effects: [corporal punishment, most often manifested as "paddling" (i.e., spanking a child with a large wooden paddle)](https://www.theguardian.com/us-news/2018/sep/12/georgia-school-innovation-classics-paddle-students#:~:text=the%20United%20States.-,Georgia%20is%20one%20of%2018%20states%20where%20corporal%20punishment%20remains,of%20corporal%20punishment%20each%20year). 
+
+**Current Project**
+
+This dashboard is an exploratory analysis of inequity in **harsh punishments** among demographic characteristics in Georgia schools, including: 
+  * Permanent expulsion
+  * Out of school suspension
+  * Juvenile court referral
+  * Corporal punishment 
+  * Physical restraint -- technically this is not a legal form of punishment by [Georgia Law](https://safesupportivelearning.ed.gov/sites/default/files/discipline-compendium/Georgia%20School%20Discipline%20Laws%20and%20Regulations.pdf), however it is reported by the [GA Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx) alongside other punishments, suggesting it's used enough to need to be tracked (and making it into my definition of a "harsh punishment")
+
+### Dashboard Walk-Thru
+
+  1. **Page 1** is intended for anyone interested in the breakdown of harsh punishments by demographics. Included in this page is:
+    
+    * an interactive map which shows distribution of harsh punishments per student, along with percents of racial-ethnic characteristics
+    * 
+    
+  2. **Page 2** is intended for school administrators and policy makers who want to see 
 
 The interactive map shows harsh punishments per student, represented as quintiles of the underlying distribution, for each district. In addition to these, district names and several district demographic characteristics are presented by hovering over a district line.
 
@@ -431,11 +456,7 @@ a call to change [reference](https://www.tandfonline.com/doi/pdf/10.1080/0009865
 
 * *Harsh punishments* are punishments that either remove students from the school or involve physically disciplining students. The disciplinary actions reported that match this definition include:
 
-  * Out of school suspension
-  * Juvenile court referral
-  * Permanent expulsion
-  * Physical restraint
-  * Corporal punishment
+
 
   
 * *Free and Reduced-Price Lunch Status* (FRL) is related to family income and is used as a crude approximation of a child coming from a low-income family. 
@@ -456,37 +477,6 @@ Column {data-width=650, .tabset}
 plotly_map1 
 ```
 
-### Code (Figure 1)
-
-```{r, echo = T, eval = F}
-b_map <- GA_districts %>% 
-  mutate(`Quintile Harsh Punishment` = harsh_qt,
-    Demographics = paste('\n', '(', district, ')',
-                         '\n', round(d_black, 1), '% Black', 
-                         '\n', round(d_hisp, 1), '% Hispanic', 
-                         '\n', round(d_migrant, 1), '% Migrant', 
-                         '\n', round(d_frl, 1), '% FRL', 
-                         sep = "")
-         ) %>% 
-  ggplot(aes(geometry = geometry)) + 
-  geom_sf(aes(fill = `Quintile Harsh Punishment`, text = Demographics)) +
-  scale_fill_manual(
-    values =
-      c('#a9c2f4',
-        '#7ca2ee',
-        '#4f82e8',
-        '#2262e2',
-        '#184eb9'),
-    na.value = '#6a6b6c') +
-  theme_void()  +
-  labs(fill = 'Quintile Harsh Punishments',
-       title = 'Distribution Harsh Punishments per Student')
-
-
-plotly_map1 <- 
-  ggplotly(b_map)
-plotly_map1
-```
 
 School Admin
 ===
@@ -505,19 +495,19 @@ column {data-width=400, .tabset}
 **Table 1** & **Table 2** explore these differences. Comparing schools with the most FRL eligible to the least shows 400x more harsh punishments in the former than the latter; similar comparisons for percent black students show almost 350x more harsh punishments in schools with the highest percent black students compared to those with the lowest percent black students. 
 
 ```{r}
-percent_change_2 %>%
-  round(digits = 2) %>%
-  gt() %>%
-  tab_header(
-    title = 'Table 1. Inequity in Harsh Punishments per Student (HPS) across % FRL Students') %>%
-  tab_options(table.width = pct(95))
-
-percent_change_1 %>%
-  round(digits = 2) %>%
-  gt() %>%
-  tab_header(
-    title = 'Table 2. Inequity in Harsh Punishments per Student (HPS) across % Black Students') %>%
-  tab_options(table.width = pct(95))
+# percent_change_2 %>%
+#   round(digits = 2) %>%
+#   gt() %>%
+#   tab_header(
+#     title = 'Table 1. Inequity in Harsh Punishments per Student (HPS) across % FRL Students') %>%
+#   tab_options(table.width = pct(95))
+# 
+# percent_change_1 %>%
+#   round(digits = 2) %>%
+#   gt() %>%
+#   tab_header(
+#     title = 'Table 2. Inequity in Harsh Punishments per Student (HPS) across % Black Students') %>%
+#   tab_options(table.width = pct(95))
 ```
 
 ### School-Level Info
@@ -564,68 +554,6 @@ column {data-width=600, .tabset}
 school_gif
 ```
 
-### Code (Figure 2)
-
-```{r, echo = T, eval = F}
-school_plot <- 
-comparison_schools %>% 
-  ggplot(aes(y = 
-               fct_reorder(demographics, percent), 
-             x = percent)) + 
-  geom_jitter(aes(color = category, 
-                  shape = category), 
-              width = 0,
-              alpha = 0.6) + 
-  
-  lims(x = c(0,100)) +
-  scale_y_discrete(breaks = c(
-    'black', 
-    'frl', 
-    'white',
-    'hisp', 
-    'esol', 
-    'migrant'
-  ),
-    labels = c(
-    'Black', 
-    'FRL',
-    'White', 
-    'Hispanic', 
-    'ESOL',
-    'Migrant'
-  )) +
-  labs(x = 'Percent of School (%)', 
-       y = '', 
-       color = 'Harsh Punishments per Student', 
-       shape = 'Harsh Punishments per Student') +
-  theme_minimal() + 
-  scale_color_OkabeIto()
-
-school_animation <- 
-  school_plot + 
-  transition_states(states = category, transition_length = 2) + 
-  labs(title = 'Demographic Characteristics of Schools with the {closest_state}
-Harsh Punishments per Student') + 
-  theme(plot.title = element_text(hjust=0.5, size=rel(3)),
-        #plot.caption = element_text(hjust=0.5, size=rel(3)), 
-        axis.text.y = element_text(size = rel(2)), 
-        axis.text.x = element_text(size = rel(2)), 
-        axis.title.x = element_text(size = rel(2)),
-        legend.text = element_text(size = rel(2)), 
-        legend.title = element_text(size = rel(2)),
-        legend.position = 'bottom') + 
-  enter_fade() +    
-  exit_fade() 
-
-school_gif <- animate(school_animation, 
-                      nframes = 100, 
-                      height = 600, 
-                      width = 800, 
-                      start_pause = 5, 
-                      end_pause = 5)
-school_gif
-```
-
 Researchers
 ===
 
@@ -668,58 +596,3 @@ Column {data-width=650, .tabset}
 tree
 ```
 
-
-### Code (Figure 3)
-
-```{r, echo = T, eval = F}
-asterisk_sign <- function(p_value) {
-  if (p_value < 0.001) return(c("p_value < 0.001"))
-  if (p_value < 0.01) return(c("p_value < 0.01"))
-  if (p_value < 0.05) return(c("p_value < 0.05"))
-  else return("")}
-
-p1 <- lmertree_TA$tree[1]
-
-tree <-
-  ggparty(p1) +
-  geom_edge(size = 1.2) +
-  geom_edge_label() +
-  geom_node_label(aes(label = splitvar), 
-                  ids = "inner") +
-  geom_node_plot(gglist = list(
-    geom_boxplot(aes(y = harsh_ps, 
-                     color = `School Type`)), 
-    labs(y = 'Punishments/Student'),
-    theme_minimal(),
-    theme(axis.text.x = element_blank(), 
-          axis.ticks.x = element_blank(), 
-          axis.line.x = element_line(size = 1.5), 
-          axis.line.y = element_line(size = 1.5), 
-          panel.grid.minor.x = element_blank(), 
-          panel.grid.major.x = element_blank()),
-    lims(y = c(0, 1.5))), 
-    shared_axis_labels = T) +
-  geom_node_label(
-    line_list = list(aes(label = paste('N = ' , nodesize)),
-                     aes(label = splitvar),
-                     aes(label = asterisk_sign(p.value))),
-    # set graphical parameters for each line
-    line_gpar = list(
-      list(#size = 8,
-        col = "black",
-        fontface = "bold"),
-      list(size = 12),
-      list(size = 8)),
-    ids = "inner") +
-  geom_node_label(
-    aes(label = paste0("N = ", nodesize)),
-    fontface = "bold",
-    ids = "terminal") + 
-  labs(title = 'Mixed Effects Regression Tree of Harsh Punishments per Students') +
-  theme(plot.title = element_text(hjust = 0.5))
-
-tree
-# ggsave('tree_plot.png', tree, path = here::here('Data'))
-# tree_pic <- png::readPNG(here::here('Data', 'tree_plot.png')) 
-# grid::grid.raster(tree_pic)
-```
