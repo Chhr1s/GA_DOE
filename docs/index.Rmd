@@ -4,33 +4,30 @@ output:
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
-    social: menu
     source_code: https://chhr1s.github.io/GA_DOE_Public/docs/index.html/
 ---
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
+library(reactable)
 library(tidyverse)
 library(rio)
 library(here)
 library(janitor)
 library(sf)
 library(leaidr)
+#devtools::install_github('ivelasq/leaidr', force = T)
 library(tigris)
 library(gt)
-library(lme4)
-library(lmerTest)
 library(glmertree)
 library(plotly)
 library(colorblindr)
 library(ggparty)
 library(gganimate)
-library(ggridges)
 library(mice)
 options(tigris_use_cache = TRUE)
 options(tigris_class = "sf")
 ```
-
 
 ```{r import, include = F}
 frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report_Schools.csv")) %>% 
@@ -152,22 +149,11 @@ rm(list=setdiff(ls(), c('dat_final', 'dat_long')))
 ```
 
 ```{r, include = F, echo = F}
-target_schools <- 
-  dat_final %>% 
-  mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
-  filter(harsh_10 == 10) %>% 
-  #map_dfr(mean, na.rm = T) %>% 
-  mutate(category = '90th percentile')
-
-exemplar_schools <- 
-  dat_final %>% 
-  mutate(harsh_10 = ntile(harsh_ps, 10)) %>% 
-  filter(harsh_10 == 1) %>% 
-  #map_dfr(mean, na.rm = T) %>% 
-  mutate(category = '10th Percentile')
-
-comparison_schools <- 
-  bind_rows(target_schools, exemplar_schools) %>% 
+comparison_schools <-
+  dat_final %>%
+  mutate(harsh_10 = ntile(harsh_ps, 10)) %>%
+  filter(harsh_10 %in% c(1,10)) %>%
+  mutate(category = if_else(harsh_10 == 1, 'Fewest', 'Most')) %>% 
   select(-district, 
          -contains('non_white'),
          -district_size, 
@@ -179,29 +165,36 @@ comparison_schools <-
                names_prefix = 'perc_',
                values_to = 'percent') 
 
-comparison_districts <- 
-  bind_rows(target_schools, exemplar_schools) %>% 
-  select(-district, 
-         -district_size, 
-         -contains('non_white'),
-         -school_name, 
-         -fac_schtype,
-         -starts_with('perc_'), 
-         -d_harsh) %>% 
-  pivot_longer(starts_with('d_'),
-               names_to = 'district_demographics', 
-               names_prefix = 'd_',
-               values_to = 'percent')
+# comparison_districts <- 
+#   dat_final %>% 
+#   mutate(d_harsh_10 = ntile(d_harsh, 10)) %>%
+#   filter(d_harsh_10 %in% c(1,10)) %>%
+#   mutate(category = if_else(d_harsh_10 == 1, 'Fewest', 'Most')) %>% 
+#   select(-contains('...'), 
+#          -total, 
+#          -contains('non_white'),
+#          -school_name, 
+#          -fac_schtype,
+#          -starts_with('perc_'), 
+#          -contains('harsh')
+#          ) %>% 
+#   unique() %>% 
+#   pivot_longer(starts_with('d_'),
+#                names_to = 'district_demographics', 
+#                names_prefix = 'd_',
+#                values_to = 'percent')
+```
 
+```{r}
 school_plot <- 
 comparison_schools %>% 
   ggplot(aes(y = 
                fct_reorder(demographics, percent), 
-             x = percent, 
-             fill = category)) + 
-  #geom_col(position = 'dodge') +
-  geom_density_ridges(alpha = 0.6, 
-                      color = 'gray30', show.legend = F) + 
+             x = percent)) + 
+  geom_jitter(aes(color = category, 
+                  shape = category), 
+              width = 0,
+              alpha = 0.6) + 
   lims(x = c(0,100)) +
   scale_y_discrete(breaks = c(
     'black', 
@@ -212,61 +205,106 @@ comparison_schools %>%
     'migrant'
   ),
     labels = c(
-    'Black Students', 
-    'FRL Eligible',
-    'White Students', 
-    'Hispanic Students', 
-    'ESOL Students',
-    'Migrant Students'
+    'Black', 
+    'FRL',
+    'White', 
+    'Hispanic', 
+    'ESOL',
+    'Migrant'
   )) +
-  labs(fill = 'Harsh Punishments Per Student', 
-       title = 'School Characteristics',
-       #subtitle = 'Schools with most & least harsh punishments per student',
+  labs(x = 'Percent of School (%)', 
        y = '', 
-       x = '') +
+       color = 'Harsh Punishments per Student', 
+       shape = 'Harsh Punishments per Student') +
   theme_minimal() + 
-  theme(legend.position = 'bottom', 
-        plot.title.position = 'plot') +
-  scale_fill_OkabeIto()
-
-district_plot <- 
-  comparison_districts %>% 
-  ggplot(aes(y = 
-               fct_reorder(district_demographics, percent), 
-             x = percent, 
-             fill = category)) + 
-  geom_density_ridges(alpha = 0.6, 
-                      color = 'gray30') + 
-  labs(fill = 'Harsh Punishments Per Student', 
-       title = 'District Characteristics',
-       #subtitle = 'Schools with most & least harsh punishments per student',
-       y = '', 
-       x = 'Percent (%)') +
-  lims(x = c(0,100)) +
-  theme_minimal() + 
-  scale_y_discrete(breaks = c(
-    'black', 
-    'frl', 
-    'white',
-    'hisp', 
-    'esol', 
-    'migrant'
-  ),
-  labels = c(
-    'Black Students', 
-    'FRL Eligible',
-    'White Students', 
-    'Hispanic Students', 
-    'ESOL Students',
-    'Migrant Students'
-  )) +
-  theme(legend.position = 'bottom', 
-        plot.title.position = 'plot') +  
-  scale_fill_OkabeIto()
-
-  ## CONSIDER CALCULATING STANDARD ERRORS
-  ## TALK ABOUT THESE AS INTERVENTION TARGETS
+  scale_color_OkabeIto()
 ```
+
+```{r}
+school_animation <- 
+  school_plot + 
+  transition_states(states = category, transition_length = 2) + 
+  labs(title = 'Demographics of Schools with the {closest_state} 
+Harsh Punishments per Student') + 
+  theme(plot.title = element_text(hjust=0.5, size=rel(3)), 
+        #plot.caption = element_text(hjust=0.5, size=rel(3)), 
+        axis.text.y = element_text(size = rel(2)), 
+        axis.text.x = element_text(size = rel(2)), 
+        legend.title = element_text(size = rel(2)),
+        legend.text = element_text(size = rel(2)), 
+        legend.position = 'bottom') + 
+  enter_fade() +    
+  exit_fade() 
+
+school_gif <- animate(school_animation, 
+                        nframes = 100, 
+                        height = 600, 
+                        width = 800, 
+                        start_pause = 5, 
+                        end_pause = 5)
+```
+
+```{r}
+# district_plot <- 
+# comparison_districts %>% 
+#   ggplot(aes(y = 
+#                fct_reorder(district_demographics, percent), 
+#              x = percent)) + 
+#   geom_jitter(aes(color = category, 
+#                   shape = category), 
+#               width = 0,
+#               alpha = 0.6) + 
+#   lims(x = c(0,100)) +
+#   scale_y_discrete(breaks = c(
+#     'black', 
+#     'frl', 
+#     'white',
+#     'hisp', 
+#     'esol', 
+#     'migrant'
+#   ),
+#     labels = c(
+#     'Black', 
+#     'FRL',
+#     'White', 
+#     'Hispanic', 
+#     'ESOL',
+#     'Migrant'
+#   )) +
+#   theme_minimal() + 
+#   labs(x = 'Percent of District (%)', 
+#        y = '', 
+#        color = 'Harsh Punishments per Student', 
+#        shape = 'Harsh Punishments per Student') +
+#   scale_color_OkabeIto()
+```
+
+```{r}
+# district_animation <- 
+#   district_plot + 
+#   transition_states(states = category, transition_length = 2) + 
+#   labs(title = 'Demographics of Districts with the {closest_state} 
+# Harsh Punishments per Student') + 
+#   theme(plot.title = element_text(hjust=0.5, size=rel(3)), 
+#         #plot.caption = element_text(hjust=0.5, size=rel(3)), 
+#         axis.text.y = element_text(size = rel(2)), 
+#         axis.text.x = element_text(size = rel(2)), 
+#         legend.title = element_text(size = rel(2)),
+#         legend.text = element_text(size = rel(2)), 
+#         legend.position = 'bottom') +   
+#   enter_fade() +    
+#   exit_fade()
+# 
+# district_gif <- animate(district_animation, 
+#                         nframes = 100, 
+#                         height = 600, 
+#                         width = 800, 
+#                         start_pause = 20, 
+#                         end_pause = 20)
+
+#anim_save("district_gif.gif", district_gif)
+```
+
 
 ```{r}
 lmertree_TA <- dat_final %>% 
@@ -294,19 +332,19 @@ lmertree_TA <- dat_final %>%
      cluster = district,
      minsize = 230)
 
-p1 <- lmertree_TA$tree[1]
+```
 
+```{r}
 asterisk_sign <- function(p_value) {
   if (p_value < 0.001) return(c("p_value < 0.001"))
   if (p_value < 0.01) return(c("p_value < 0.01"))
   if (p_value < 0.05) return(c("p_value < 0.05"))
-  else return("")
-}
-```
+  else return("")}
 
-```{r eval=FALSE, include=FALSE}
+p1 <- lmertree_TA$tree[1]
+
 tree <-
-ggparty(p1) +
+  ggparty(p1) +
   geom_edge(size = 1.2) +
   geom_edge_label() +
   geom_node_label(aes(label = splitvar), 
@@ -321,63 +359,70 @@ ggparty(p1) +
           axis.line.x = element_line(size = 1.5), 
           axis.line.y = element_line(size = 1.5), 
           panel.grid.minor.x = element_blank(), 
-          panel.grid.major.x = element_blank()
-          ),
+          panel.grid.major.x = element_blank()),
     lims(y = c(0, 1.5))), 
     shared_axis_labels = T) +
-                  line_list = list(aes(label = paste('N = ' , nodesize)),
-                                   aes(label = splitvar),
-                                   aes(label = asterisk_sign(p.value))),
-                  # set graphical parameters for each line
-                  line_gpar = list(list(#size = 8,
-                                        col = "black",
-                                        fontface = "bold"),
-                                   list(size = 12),
-                                   list(size = 8)
-                                   ),
-                  ids = "inner") +
-  geom_node_label(aes(label = paste0("N = ", nodesize)),
-                  fontface = "bold",
-                  ids = "terminal",
-                  ) + 
+  geom_node_label(
+    line_list = list(aes(label = paste('N = ' , nodesize)),
+                     aes(label = splitvar),
+                     aes(label = asterisk_sign(p.value))),
+    # set graphical parameters for each line
+    line_gpar = list(
+      list(#size = 8,
+        col = "black",
+        fontface = "bold"),
+      list(size = 12),
+      list(size = 8)),
+    ids = "inner") +
+  geom_node_label(
+    aes(label = paste0("N = ", nodesize)),
+    fontface = "bold",
+    ids = "terminal") + 
   labs(title = 'Mixed Effects Regression Tree of Harsh Punishments per Students') +
   theme(plot.title = element_text(hjust = 0.5))
 
-
+  
 ggsave('tree_plot.png', tree, path = here::here('Data'))
 ```
 
 ```{r, echo = F}
 summary_1 <- dat_final %>% 
-  mutate(`Quintile of % Black Students` = ntile(perc_black, 5)) %>% 
-  group_by(`Quintile of % Black Students`) %>% 
-  summarize(`Average % Black Students in Quintile` = mean(perc_black), 
-           `Average Harsh Punishments per Student` = mean(harsh_ps))
+  mutate(`Quintile Black Students` = ntile(perc_black, 5)) %>% 
+  group_by(`Quintile Black Students`) %>% 
+  summarize(`Average % Black Students` = mean(perc_black), 
+           `Average HPS` = mean(harsh_ps))
 
-comparison_1 <- summary_1$`Average Harsh Punishments per Student`[1]
+comparison_1 <- summary_1$`Average HPS`[1]
 
 percent_change_1 <- summary_1 %>% 
-  mutate(`% Increase in Punishments from 1st` = 
-           (`Average Harsh Punishments per Student`- comparison_1)/comparison_1*100)
+  mutate(`% Increase in HPS from 1st Quintile` = 
+           (`Average HPS`- comparison_1)/comparison_1*100)
 
 summary_2 <- dat_final %>% 
-  mutate(`Quintile of % FRL Students` = ntile(perc_frl, 5)) %>% 
-  group_by(`Quintile of % FRL Students`) %>% 
-  summarize(`Average % FRL Students in Quintile` = mean(perc_frl), 
-           `Average Harsh Punishments per Student` = mean(harsh_ps))
+  mutate(`Quintile FRL Students` = ntile(perc_frl, 5)) %>% 
+  group_by(`Quintile FRL Students`) %>% 
+  summarize(`Average % FRL Students` = mean(perc_frl), 
+           `Average HPS` = mean(harsh_ps))
 
-comparison_2 <- summary_2$`Average Harsh Punishments per Student`[1]
+comparison_2 <- summary_2$`Average HPS`[1]
 
 percent_change_2 <- summary_2 %>% 
-  mutate(`% Increase in Punishments from 1st` = 
-           (`Average Harsh Punishments per Student`- comparison_2)/comparison_2*100)
+  mutate(`% Increase in HPS from 1st Quintile` = 
+           (`Average HPS`- comparison_2)/comparison_2*100)
 
 ```
 
 ```{r, eval = T, include = F}
 # Geographic Data (Teachers & Admin Page)
-GA_sf <- 
-  lea_get(state = 'GA') %>% 
+
+#GA <- lea_get(state = 'GA') 
+#maptools::writeSpatialShape(GA, 'GA_map')
+GA_1 <- maptools::readShapeSpatial('GA_map.shp')
+
+# GA_sf <- 
+#   lea_get(state = 'GA') %>%
+
+GA_sf <- GA_1 %>% 
   st_as_sf() %>% 
   mutate(district = 
            str_replace(string = NAME, 
@@ -389,7 +434,6 @@ GA_sf <-
            str_replace(string = district, 
                        pattern = " School", "")
          )
-
 ```
 
 ```{r, eval = T, include = F}
@@ -476,19 +520,51 @@ In a school setting, student discipline is not completely objective. School admi
 The data set represents 2,141 schools in 198 districts across the state of Georgia, and merges data from the [Governer's Office of Student Achievement](https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data) and the [Georgia Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx). 
 
 
-Column {data-width=650}
+Column {data-width=650, .tabset} 
 -----------------------------------------------------------------------
-### Figure 1. Interactive Map 
+
+### Figure 1.
 
 ```{r}
 plotly_map1 
 ```
 
+### Code (Figure 1)
+
+```{r echo = TRUE, eval = F}
+b_map <- GA_districts %>% 
+  mutate(`Quintile Harsh Punishment` = harsh_qt,
+    Demographics = paste('\n', '(', district, ')',
+                         '\n', round(d_black, 1), '% Black', 
+                         '\n', round(d_hisp, 1), '% Hispanic', 
+                         '\n', round(d_migrant, 1), '% Migrant', 
+                         '\n', round(d_frl, 1), '% FRL', 
+                         sep = "")
+         ) %>% 
+  ggplot(aes(geometry = geometry)) + 
+  geom_sf(aes(fill = `Quintile Harsh Punishment`, text = Demographics)) +
+  scale_fill_manual(
+    values =
+      c('#a9c2f4',
+        '#7ca2ee',
+        '#4f82e8',
+        '#2262e2',
+        '#184eb9'),
+    na.value = '#6a6b6c') +
+  theme_void()  +
+  labs(fill = 'Quintile Harsh Punishments',
+       title = 'Distribution Harsh Punishments per Student')
+
+
+plotly_map1 <- 
+  ggplotly(b_map)
+plotly_map1
+```
+
 School Admin
 ===
 
-
-Column {data-width=350}
+column {data-width=400, .tabset}
 -----------------------------------------------------------------------
 
 ### Profiles of Schools
@@ -501,65 +577,127 @@ Column {data-width=350}
 
 **Table 1** & **Table 2** explore these differences. Comparing schools with the most FRL eligible to the least shows 400x more harsh punishments in the former than the latter; similar comparisons for percent black students show almost 350x more harsh punishments in schools with the highest percent black students compared to those with the lowest percent black students. 
 
-
-Column {data-width=650, .tabset}
------------------------------------------------------------------------
-### Figure 2. Final
-
 ```{r}
-gridExtra::grid.arrange(school_plot, district_plot, heights = list(0.9, 1.0))
-```
-
-### Tables
-
-```{r }
-percent_change_2 %>% 
-  round(digits = 2) %>% 
-  gt() %>% 
+percent_change_2 %>%
+  round(digits = 2) %>%
+  gt() %>%
   tab_header(
-    title = 'Table 1. Increase in Harsh Punishments with Quintile of FRL Elibible Students') %>%
-  tab_options(table.width = pct(80))
+    title = 'Table 1. Inequity in Harsh Punishments per Student (HPS) across % FRL Students') %>%
+  tab_options(table.width = pct(95))
 
 percent_change_1 %>%
   round(digits = 2) %>%
   gt() %>%
   tab_header(
-    title = 'Table 2. Increase in Harsh Punishments with Quintile of Percent Black Students') %>%
-  tab_options(table.width = pct(80))
+    title = 'Table 2. Inequity in Harsh Punishments per Student (HPS) across % Black Students') %>%
+  tab_options(table.width = pct(95))
 ```
 
-### Figure 2. Initial
+### School-Level Info
 
 ```{r}
+dat_school_level <-
+  dat_final %>% 
+  transmute(school_name,
+            district = district,
+            harsh_punishments = harsh, 
+            harsh_per_student = harsh_ps,
+            school_type = factor(fac_schtype, 
+                                 levels = c('E', 'M', 'H', 'K12'), 
+                                 labels = c('Elementary', 'Middle', 'High', 'K-12')),
+            number_of_students = total, 
+            percent_black = perc_black, 
+            percent_hispanic = perc_hisp, 
+            percent_white = perc_white, 
+            percent_migrant = perc_migrant, 
+            percent_ESOL = perc_esol) %>% 
+  mutate_if(is.numeric, round)
+  
+  
+reactable(dat_school_level, 
+    filterable = T,
+    highlight = T, 
+    striped = T, 
+    outlined = T,
+    defaultSorted = c('harsh_per_student'),
+    defaultColDef = colDef(
+      header = function(x) str_to_title(gsub("_", " ", x))
+    ),
+    defaultSortOrder = 'desc'
+  )
+```
+
+
+column {data-width=600, .tabset}
+-----------------------------------------------------------------------
+
+### Figure 2.
+
+```{r}
+school_gif
+```
+
+### Code (Figure 2)
+
+```{r echo = T, eval = F}
+school_plot <- 
 comparison_schools %>% 
   ggplot(aes(y = 
                fct_reorder(demographics, percent), 
-             x = percent, 
-             fill = category)) + 
-  geom_col() +
-  labs(fill = 'Harsh Punishments Per Student', 
-       title = 'School Characteristics',
+             x = percent)) + 
+  geom_jitter(aes(color = category, 
+                  shape = category), 
+              width = 0,
+              alpha = 0.6) + 
+  
+  lims(x = c(0,100)) +
+  scale_y_discrete(breaks = c(
+    'black', 
+    'frl', 
+    'white',
+    'hisp', 
+    'esol', 
+    'migrant'
+  ),
+    labels = c(
+    'Black', 
+    'FRL',
+    'White', 
+    'Hispanic', 
+    'ESOL',
+    'Migrant'
+  )) +
+  labs(x = 'Percent of School (%)', 
        y = '', 
-       x = 'Percent (%)') +
+       color = 'Harsh Punishments per Student', 
+       shape = 'Harsh Punishments per Student') +
   theme_minimal() + 
-  theme(legend.position = 'bottom', 
-        plot.title.position = 'plot')
+  scale_color_OkabeIto()
 
-comparison_districts %>% 
-  ggplot(aes(y = 
-               fct_reorder(district_demographics, percent), 
-             x = percent, 
-             fill = category)) + 
-  geom_col() + 
-  labs(fill = 'Harsh Punishments Per Student', 
-       title = 'District Characteristics',
-       y = '', 
-       x = 'Percent (%)') +
-  theme_minimal() + 
-  theme(legend.position = 'bottom', 
-        plot.title.position = 'plot')
+school_animation <- 
+  school_plot + 
+  transition_states(states = category, transition_length = 2) + 
+  labs(title = 'Demographic Characteristics of Schools with the {closest_state}
+Harsh Punishments per Student') + 
+  theme(plot.title = element_text(hjust=0.5, size=rel(3)),
+        #plot.caption = element_text(hjust=0.5, size=rel(3)), 
+        axis.text.y = element_text(size = rel(2)), 
+        axis.text.x = element_text(size = rel(2)), 
+        axis.title.x = element_text(size = rel(2)),
+        legend.text = element_text(size = rel(2)), 
+        legend.title = element_text(size = rel(2)),
+        legend.position = 'bottom') + 
+  enter_fade() +    
+  exit_fade() 
+
+school_gif <- animate(school_animation, 
+                      nframes = 100, 
+                      height = 600, 
+                      width = 800, 
+                      start_pause = 5, 
+                      end_pause = 5)
+school_gif
 ```
-
 
 Researchers
 ===
@@ -595,71 +733,66 @@ This provides evidence that there is significant inequity in distribution of har
 Column {data-width=650, .tabset}
 -----------------------------------------------------------------------
 
-### Figure 3. Final
-
-```{r, fig.width = 6.18, fig.height = 6.17}
-tree_pic <- png::readPNG(here::here('Data', 'tree_plot.png')) 
-grid::grid.raster(tree_pic)
-```
-
-### Figure 3. Initial
+### Figure 3. 
 
 ```{r}
-plot(lmertree_TA, which = 'tree', ask = F)
-```
-### Figure 3. Second
-
-```{r}
-# temp <- ggparty(p1) +
-#   geom_edge(size = 1.2) +
-#   geom_edge_label() +
-#   geom_node_label(aes(label = splitvar), 
-#                   ids = "inner") +
-#   geom_node_plot(gglist = list(
-#     geom_boxplot(aes(y = harsh_ps, 
-#                      color = `School Type`)), 
-#     labs(y = 'Punishments/Student'),
-#     theme_minimal()), 
-#     shared_axis_labels = T)+
-#   geom_node_label(# label nodes with ID, split variable and p value
-#                   line_list = list(aes(label = paste('N = ' , nodesize)),
-#                                    aes(label = splitvar),
-#                                    aes(label = asterisk_sign(p.value))),
-#                   # set graphical parameters for each line
-#                   line_gpar = list(list(#size = 8,
-#                                         col = "black",
-#                                         fontface = "bold"),
-#                                    list(size = 12),
-#                                    list(size = 8)
-#                                    ),
-#                   ids = "inner") 
-# 
-# ggsave('tree_plot_initial.png', temp, path = here::here('Data'))
-tree_pic_initial <- png::readPNG(here::here('Data', 'tree_plot_initial.png'))
-grid::grid.raster(tree_pic_initial)
+# tree_pic <- png::readPNG(here::here('Data', 'tree_plot.png')) 
+# grid::grid.raster(tree_pic)
+tree
 ```
 
 
-```{r, include = F, eval = F}
-t1 <-tibble(.rows = 1)
+### Code (Figure 3)
 
-for (i in list(lm1, lm2, lmer1)){
-  next_resid <<-tibble(sqrt(mean(residuals(i)^2)), .rows = 1)
-  t1 <<- cbind(t1, next_resid) 
-}
-columns <- 
-  list('lm1', 'lm2', 'lmer1')
+```{r, echo = T, eval = F}
+asterisk_sign <- function(p_value) {
+  if (p_value < 0.001) return(c("p_value < 0.001"))
+  if (p_value < 0.01) return(c("p_value < 0.01"))
+  if (p_value < 0.05) return(c("p_value < 0.05"))
+  else return("")}
 
-colnames(t1) <- columns
+p1 <- lmertree_TA$tree[1]
 
-rmse <- 
-  t1 %>% 
-  pivot_longer('lm1':'lmer1', 
-               names_to = 'model',
-               values_to = 'rmse') %>% 
-  mutate(model = factor(model, levels = columns, 
-                        labels = c('simple linear model aggregated',
-                                   'simple linear model disaggregated',
-                                   'simple mixed-effects model')))
-rmse
+tree <-
+  ggparty(p1) +
+  geom_edge(size = 1.2) +
+  geom_edge_label() +
+  geom_node_label(aes(label = splitvar), 
+                  ids = "inner") +
+  geom_node_plot(gglist = list(
+    geom_boxplot(aes(y = harsh_ps, 
+                     color = `School Type`)), 
+    labs(y = 'Punishments/Student'),
+    theme_minimal(),
+    theme(axis.text.x = element_blank(), 
+          axis.ticks.x = element_blank(), 
+          axis.line.x = element_line(size = 1.5), 
+          axis.line.y = element_line(size = 1.5), 
+          panel.grid.minor.x = element_blank(), 
+          panel.grid.major.x = element_blank()),
+    lims(y = c(0, 1.5))), 
+    shared_axis_labels = T) +
+  geom_node_label(
+    line_list = list(aes(label = paste('N = ' , nodesize)),
+                     aes(label = splitvar),
+                     aes(label = asterisk_sign(p.value))),
+    # set graphical parameters for each line
+    line_gpar = list(
+      list(#size = 8,
+        col = "black",
+        fontface = "bold"),
+      list(size = 12),
+      list(size = 8)),
+    ids = "inner") +
+  geom_node_label(
+    aes(label = paste0("N = ", nodesize)),
+    fontface = "bold",
+    ids = "terminal") + 
+  labs(title = 'Mixed Effects Regression Tree of Harsh Punishments per Students') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+tree
+# ggsave('tree_plot.png', tree, path = here::here('Data'))
+# tree_pic <- png::readPNG(here::here('Data', 'tree_plot.png')) 
+# grid::grid.raster(tree_pic)
 ```
