@@ -2,12 +2,13 @@
 title: "EDLD 652 Final"
 output: 
   flexdashboard::flex_dashboard:
+    css: css_script.css
     orientation: columns
     vertical_layout: fill
     source_code: https://chhr1s.github.io/GA_DOE_Public/docs/index.html/
 ---
 
-```{r setup, include=FALSE}
+```{r setup}
 library(flexdashboard)
 library(reactable)
 library(tidyverse)
@@ -29,7 +30,7 @@ options(tigris_use_cache = TRUE)
 options(tigris_class = "sf")
 ```
 
-```{r import, include = F}
+```{r, echo = F}
 frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report_Schools.csv")) %>% 
   clean_names() %>% 
   mutate(kk_12_percent_frl = as.numeric(kk_12_percent_frl) 
@@ -114,7 +115,7 @@ dat <- disc_action %>%
 
 imputed <- dat %>% 
   select(total:harsh) %>% 
-  mice::mice(m = 1, seed = 12345, remove.collinear = T) %>% 
+  mice::mice(m = 1, seed = 12345, remove.collinear = T, print = F) %>% 
   mice::complete(1)
 
 dat_imp <- dat %>%
@@ -148,7 +149,7 @@ dat_long <- dat_final %>%
 rm(list=setdiff(ls(), c('dat_final', 'dat_long')))
 ```
 
-```{r, include = F, echo = F}
+```{r}
 comparison_schools <-
   dat_final %>%
   mutate(harsh_10 = ntile(harsh_ps, 10)) %>%
@@ -164,25 +165,6 @@ comparison_schools <-
                names_to = 'demographics', 
                names_prefix = 'perc_',
                values_to = 'percent') 
-
-# comparison_districts <- 
-#   dat_final %>% 
-#   mutate(d_harsh_10 = ntile(d_harsh, 10)) %>%
-#   filter(d_harsh_10 %in% c(1,10)) %>%
-#   mutate(category = if_else(d_harsh_10 == 1, 'Fewest', 'Most')) %>% 
-#   select(-contains('...'), 
-#          -total, 
-#          -contains('non_white'),
-#          -school_name, 
-#          -fac_schtype,
-#          -starts_with('perc_'), 
-#          -contains('harsh')
-#          ) %>% 
-#   unique() %>% 
-#   pivot_longer(starts_with('d_'),
-#                names_to = 'district_demographics', 
-#                names_prefix = 'd_',
-#                values_to = 'percent')
 ```
 
 ```{r}
@@ -243,68 +225,6 @@ school_gif <- animate(school_animation,
                         start_pause = 5, 
                         end_pause = 5)
 ```
-
-```{r}
-# district_plot <- 
-# comparison_districts %>% 
-#   ggplot(aes(y = 
-#                fct_reorder(district_demographics, percent), 
-#              x = percent)) + 
-#   geom_jitter(aes(color = category, 
-#                   shape = category), 
-#               width = 0,
-#               alpha = 0.6) + 
-#   lims(x = c(0,100)) +
-#   scale_y_discrete(breaks = c(
-#     'black', 
-#     'frl', 
-#     'white',
-#     'hisp', 
-#     'esol', 
-#     'migrant'
-#   ),
-#     labels = c(
-#     'Black', 
-#     'FRL',
-#     'White', 
-#     'Hispanic', 
-#     'ESOL',
-#     'Migrant'
-#   )) +
-#   theme_minimal() + 
-#   labs(x = 'Percent of District (%)', 
-#        y = '', 
-#        color = 'Harsh Punishments per Student', 
-#        shape = 'Harsh Punishments per Student') +
-#   scale_color_OkabeIto()
-```
-
-```{r}
-# district_animation <- 
-#   district_plot + 
-#   transition_states(states = category, transition_length = 2) + 
-#   labs(title = 'Demographics of Districts with the {closest_state} 
-# Harsh Punishments per Student') + 
-#   theme(plot.title = element_text(hjust=0.5, size=rel(3)), 
-#         #plot.caption = element_text(hjust=0.5, size=rel(3)), 
-#         axis.text.y = element_text(size = rel(2)), 
-#         axis.text.x = element_text(size = rel(2)), 
-#         legend.title = element_text(size = rel(2)),
-#         legend.text = element_text(size = rel(2)), 
-#         legend.position = 'bottom') +   
-#   enter_fade() +    
-#   exit_fade()
-# 
-# district_gif <- animate(district_animation, 
-#                         nframes = 100, 
-#                         height = 600, 
-#                         width = 800, 
-#                         start_pause = 20, 
-#                         end_pause = 20)
-
-#anim_save("district_gif.gif", district_gif)
-```
-
 
 ```{r}
 lmertree_TA <- dat_final %>% 
@@ -385,7 +305,7 @@ tree <-
 ggsave('tree_plot.png', tree, path = here::here('Data'))
 ```
 
-```{r, echo = F}
+```{r}
 summary_1 <- dat_final %>% 
   mutate(`Quintile Black Students` = ntile(perc_black, 5)) %>% 
   group_by(`Quintile Black Students`) %>% 
@@ -412,7 +332,7 @@ percent_change_2 <- summary_2 %>%
 
 ```
 
-```{r, eval = T, include = F}
+```{r}
 # Geographic Data (Teachers & Admin Page)
 
 #GA <- lea_get(state = 'GA') 
@@ -436,7 +356,7 @@ GA_sf <- GA_1 %>%
          )
 ```
 
-```{r, eval = T, include = F}
+```{r}
 #disc_demo %>% filter(system_name == 'Macon County')
 
 dat_district <- 
@@ -455,8 +375,7 @@ GA_districts <-
          frl_3 = ntile(d_frl, 3))
 ```
 
-
-```{r include=FALSE}
+```{r}
 b_map <- GA_districts %>% 
   mutate(`Quintile Harsh Punishment` = harsh_qt,
     Demographics = paste('\n', '(', district, ')',
@@ -489,14 +408,22 @@ plotly_map1 <-
 General 
 ===
 
-Column {data-width=350}
+Column {data-width=350, .tabset}
 -----------------------------------------------------------------------
 
 ### Introduction
 
 **Background**
 
-In a school setting, student discipline is not completely objective. School admins bring bias into their decision-making process. The interactive map shows harsh punishments per student, represented as quintiles of the underlying distribution, for each district. In addition to these, district names and several district demographic characteristics are presented by hovering over a district line.
+As a former teacher and prevention scientist, I can say confidently that administrators do not give disciplinary action to students in a completely objective manner. To be fair, administrators are human, and all humans bring bias into their decision-making process. However, when the bias clearly follows demographic characteristics (e.g., race-ethnicity, income, etc.) and when it influences the life course of a young person, it cannot be ignored.
+
+Bias in disciplinary action has been studied formally across US schools, with much of the results echoing the [disproportionate "exclusionary" disciplinary actions given to black students](https://epaa.asu.edu/ojs/article/viewFile/2787/1911), compared to black students' other-racial-ethnic counterparts, particularly white students. Exclusionary disciplinary action is any action which removes a student from the school (e.g., suspension, expulsion, etc.). Such exclusionary punishments are shown to [contribute directly to the school-to-prison pipeline](https://www.tandfonline.com/doi/full/10.1080/10665684.2014.958965). This is not meant to be a deep-dive into the literature, but this [Google Scholar](https://scholar.google.com/scholar?hl=en&as_sdt=0%2C38&q=inequity+in+student+discipline&btnG=) link can get you started if you're interested.
+
+
+
+The interactive map shows harsh punishments per student, represented as quintiles of the underlying distribution, for each district. In addition to these, district names and several district demographic characteristics are presented by hovering over a district line.
+
+a call to change [reference](https://www.tandfonline.com/doi/pdf/10.1080/00098655.2015.1121120)
 
 **Useful Definitions:** 
 
@@ -525,13 +452,13 @@ Column {data-width=650, .tabset}
 
 ### Figure 1.
 
-```{r}
+```{r }
 plotly_map1 
 ```
 
 ### Code (Figure 1)
 
-```{r echo = TRUE, eval = F}
+```{r, echo = T, eval = F}
 b_map <- GA_districts %>% 
   mutate(`Quintile Harsh Punishment` = harsh_qt,
     Demographics = paste('\n', '(', district, ')',
@@ -639,7 +566,7 @@ school_gif
 
 ### Code (Figure 2)
 
-```{r echo = T, eval = F}
+```{r, echo = T, eval = F}
 school_plot <- 
 comparison_schools %>% 
   ggplot(aes(y = 
