@@ -465,7 +465,7 @@ dat_school_level <-
             percent_white = perc_white, 
             percent_migrant = perc_migrant, 
             percent_ESOL = perc_esol, 
-            out_of_school_suspension_oss,
+            out_of_school_suspension = out_of_school_suspension_oss,
             juvenile_court_referral,
             physical_restraint,
             corporal_punishment,
