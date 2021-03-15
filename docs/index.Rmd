@@ -400,6 +400,7 @@ Column {data-width=350, .tabset}
   * **Figure 3**, a plot made from a mixed effects regression trees model that explores heterogeneity (a.k.a. subgroup differences) in harsh punishments per student at the school- and district-level. 
   * (An abbreviated) **Methods & Results** section for this model 
 
+**The [Progression-of-EDLD-652-Final Repo](https://chhr1s.github.io/Progression-of-EDLD-652-Final/) contains all of the past iterations of these figures, as required by the final project.**
 
 ### Introduction
 
