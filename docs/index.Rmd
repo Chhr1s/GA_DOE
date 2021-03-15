@@ -186,6 +186,7 @@ comparison_schools %>%
               width = 0,
               alpha = 0.6) + 
   lims(x = c(0,100)) +
+  scale_x_continuous(labels = scales::percent_format(scale = 1)) +
   scale_y_discrete(breaks = c(
     'black', 
     'frl', 
@@ -202,7 +203,7 @@ comparison_schools %>%
     'ESOL',
     'Migrant'
   )) +
-  labs(x = 'Percent of School (%)', 
+  labs(x = 'Percent of School', 
        y = '', 
        color = 'Harsh Punishments per Student', 
        shape = 'Harsh Punishments per Student', 
