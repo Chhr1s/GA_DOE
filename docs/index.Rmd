@@ -19,7 +19,6 @@ library(sf)
 library(leaidr)
 #devtools::install_github('ivelasq/leaidr', force = T)
 library(tigris)
-library(gt)
 library(glmertree)
 library(plotly)
 library(colorblindr)
@@ -210,6 +209,7 @@ comparison_schools %>%
        caption = 'Most = top 10%; Least = bottom 10%') +
   theme_minimal() + 
   scale_color_OkabeIto()
+
 ```
 
 ```{r}
@@ -318,9 +318,9 @@ tree <-
 # Geographic Data (Teachers & Admin Page)
 
 #GA <- lea_get(state = 'GA') 
-#maptools::writeSpatialShape(GA, 'GA_map')
+#maptools::writeSpatialShape(GA, here::here('Data', 'GA_map'))
 
-GA_1 <- maptools::readShapeSpatial('GA_map.shp')
+GA_1 <- maptools::readShapeSpatial(here::here('Data', 'GA_map.shp'))
 
 # GA_sf <- 
 #   lea_get(state = 'GA') %>%
@@ -365,8 +365,8 @@ b_map <- GA_districts %>%
   ggplot(aes(geometry = geometry)) + 
   geom_sf(aes(fill = `Harsh Punishments per Student`, text = Demographics)) +
   scale_fill_distiller(palette = "Blues", direction = -1) + 
-  theme(legend.position = 'bottom') +
   theme_void()  +
+  theme(legend.position = 'bottom') +
   labs(fill = 'Harsh Punishments per Student',
        title = 'Distribution Harsh Punishments per Student') 
 
