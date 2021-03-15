@@ -5,7 +5,7 @@ output:
     css: css_script.css
     orientation: columns
     vertical_layout: fill
-    source_code: https://chhr1s.github.io/GA_DOE_Public/docs/index.html/
+    source_code: https://github.com/Chhr1s/GA_DOE_Public/blob/main/docs/index.Rmd
 ---
 
 ```{r setup}
@@ -79,11 +79,6 @@ disc_action <- import(
   select(-grade_range, -school_year) %>% 
   left_join(frl)
 
-  ### There are a problem with districts where no schools reported FRL
-  ### In these districts, the average of all = 0 (with na.rm = T), 
-  ### Unsure how to handle these...
-
-
 dat <- disc_action %>% 
   left_join(schools) %>% # if this is left_join I have to impute
   group_by(system_name) %>% 
@@ -92,18 +87,21 @@ dat <- disc_action %>%
            juvenile_court_referral +
            physical_restraint +
            corporal_punishment +
-           permanent_expulsion, # +
-           #in_school_suspension_iss,
+           permanent_expulsion,
          district = factor(system_name),
          school_name = factor(school_name), 
          fac_schtype = factor(fac_schtype), 
          perc_frl = kk_12_percent_frl 
          ) %>% 
   select(district, 
-         #district_size, 
          school_name, 
          fac_schtype, 
          total,
+         out_of_school_suspension_oss,
+         juvenile_court_referral,
+         physical_restraint,
+         corporal_punishment,
+         permanent_expulsion,
          contains('frl'),
          contains('black'), 
          contains('hisp'), 
@@ -122,7 +120,7 @@ dat_imp <- dat %>%
   select(district, school_name, fac_schtype) %>%
   bind_cols(imputed)
 
-dat_imp %>% export(here('Data', 'Imputed.csv'))
+dat_imp %>% rio::export(here('Data', 'Imputed.csv'))
 ```
 
 ```{r}
@@ -238,10 +236,11 @@ school_gif <- animate(school_animation,
 ```
 
 ```{r}
-#library(glmertree)
 lmertree_TA <- dat_final %>% 
   mutate(`% Black` = perc_black, 
-         `School Type` = factor(fac_schtype),
+         `School Type` = factor(fac_schtype, 
+                                 levels =c('E', 'M', 'H', 'K12'), 
+                                 labels =c('E', 'M', 'H', 'K12')),
          `% FRL` = perc_frl) %>% 
   lmertree(
      formula = 
@@ -300,11 +299,11 @@ tree <-
                      aes(label = asterisk_sign(p.value))),
     # set graphical parameters for each line
     line_gpar = list(
-      list(#size = 8,
+      list(size = 7,
         col = "black",
         fontface = "bold"),
-      list(size = 12),
-      list(size = 8)),
+      list(size = 11),
+      list(size = 7)),
     ids = "inner") +
   geom_node_label(
     aes(label = paste0("N = ", nodesize)),
@@ -312,36 +311,6 @@ tree <-
     ids = "terminal") + 
   labs(title = 'Mixed Effects Regression Tree of Harsh Punishments per Students') +
   theme(plot.title = element_text(hjust = 0.5))
-
-  
-#ggsave('tree_plot.png', tree, path = here::here('Data'))
-```
-
-```{r}
-summary_1 <- dat_final %>% 
-  mutate(`Quintile Black Students` = ntile(perc_black, 5)) %>% 
-  group_by(`Quintile Black Students`) %>% 
-  summarize(`Average % Black Students` = mean(perc_black), 
-           `Average HPS` = mean(harsh_ps))
-
-comparison_1 <- summary_1$`Average HPS`[1]
-
-percent_change_1 <- summary_1 %>% 
-  mutate(`% Increase in HPS from 1st Quintile` = 
-           (`Average HPS`- comparison_1)/comparison_1*100)
-
-summary_2 <- dat_final %>% 
-  mutate(`Quintile FRL Students` = ntile(perc_frl, 5)) %>% 
-  group_by(`Quintile FRL Students`) %>% 
-  summarize(`Average % FRL Students` = mean(perc_frl), 
-           `Average HPS` = mean(harsh_ps))
-
-comparison_2 <- summary_2$`Average HPS`[1]
-
-percent_change_2 <- summary_2 %>% 
-  mutate(`% Increase in HPS from 1st Quintile` = 
-           (`Average HPS`- comparison_2)/comparison_2*100)
-
 ```
 
 ```{r}
@@ -349,6 +318,7 @@ percent_change_2 <- summary_2 %>%
 
 #GA <- lea_get(state = 'GA') 
 #maptools::writeSpatialShape(GA, 'GA_map')
+
 GA_1 <- maptools::readShapeSpatial('GA_map.shp')
 
 # GA_sf <- 
@@ -369,8 +339,6 @@ GA_sf <- GA_1 %>%
 ```
 
 ```{r}
-#disc_demo %>% filter(system_name == 'Macon County')
-
 dat_district <- 
   dat_final %>% 
   select(district, district_size, starts_with('d_')) %>% 
@@ -380,11 +348,7 @@ GA_districts <-
   GA_sf %>% 
   left_join(dat_district) %>% 
   mutate(harsh_qt = factor(ntile(d_harsh, 5)), 
-         black_qt = factor(ntile(d_black, 5)),
-         frl_qt = ntile(d_frl, 5), 
-         harsh_3 = ntile(d_harsh, 3), 
-         black_3 = ntile(d_black, 3), 
-         frl_3 = ntile(d_frl, 3))
+         black_qt = factor(ntile(d_black, 5)))
 ```
 
 ```{r}
@@ -416,13 +380,33 @@ General
 Column {data-width=350, .tabset}
 -----------------------------------------------------------------------
 
+### Index & Walk-Thru
+
+**1. Page 1: intended for anyone.** This page includes:
+
+  * **Figure 1**, an interactive map of Georgia which shows distribution of **harsh punishments per student** & **percents of demographic characteristics** in each school districts (drag an area to zoom in, double click to zoom out, hover the mouse along *district borders* to see information)
+  * **Background information** for the project (See *Introduction* tab behind this one)
+  * **Useful definitions** of terms used throughout (See *Introduction* tab behind this one)
+
+**2. Page 2: intended for school admin & education policy makers.** This page includes:
+
+  * **Figure 2**, an animated plot showing the demographic characteristics of schools with **the most harsh punishments per student** versus **schools with the least harsh punishments per student**. 
+  * **Explanations of these differences** along with **recommendations for admins and policy makers**
+  * **(Searchable) school-level data for every school in Georgia**
+
+**3. Page 3: intended for researchers and analysts.** This page includes:
+
+  * **Figure 3**, a plot made from a mixed effects regression trees model that explores heterogeneity (a.k.a. subgroup differences) in harsh punishments per student at the school- and district-level. 
+  * (An abbreviated) **Methods & Results** section for this model 
+
+
 ### Introduction
 
 **Background**
 
 As a former teacher and a prevention scientist, I can say disciplinary actions are given to students inequitably; sometimes this can be chalked up to circumstantial differences, but often it's due to biases carried by the administration.
 
-Such inequities manifest as [black students recieving a disproportionate number of "exclusionary" disciplinary actions](https://epaa.asu.edu/ojs/article/viewFile/2787/1911), compared to their other racial-ethnic counterparts—particularly white students. 
+Such inequities manifest as [Black students recieving a disproportionate number of "exclusionary" disciplinary actions](https://epaa.asu.edu/ojs/article/viewFile/2787/1911), compared to their other racial-ethnic counterparts—particularly White students. 
 
 "Exclusionary disciplinary action" is any action which removes a student from the school (e.g., suspension, expulsion, etc.). Such exclusionary punishments are shown to [contribute directly to the school-to-prison pipeline](https://www.tandfonline.com/doi/full/10.1080/10665684.2014.958965). This is not meant to be a deep-dive into the literature, but this [Google Scholar](https://scholar.google.com/scholar?hl=en&as_sdt=0%2C38&q=inequity+in+student+discipline&btnG=) link can get you started if you're interested. 
 
@@ -430,42 +414,21 @@ Other punishments besides these exclusionary actions can be detrimental to a chi
 
 **Current Project**
 
-This dashboard is an exploratory analysis of inequity in **harsh punishments** among demographic characteristics in Georgia schools, including: 
+This dashboard is an exploratory analysis of inequity in **harsh punishments** among demographic characteristics in Georgia schools, defined as: 
+
   * Permanent expulsion
   * Out of school suspension
   * Juvenile court referral
   * Corporal punishment 
-  * Physical restraint -- technically this is not a legal form of punishment by [Georgia Law](https://safesupportivelearning.ed.gov/sites/default/files/discipline-compendium/Georgia%20School%20Discipline%20Laws%20and%20Regulations.pdf), however it is reported by the [GA Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx) alongside other punishments, suggesting it's used enough to need to be tracked (and making it into my definition of a "harsh punishment")
-
-### Dashboard Walk-Thru
-
-  1. **Page 1** is intended for anyone interested in the breakdown of harsh punishments by demographics. Included in this page is:
-    
-    * an interactive map which shows distribution of harsh punishments per student, along with percents of racial-ethnic characteristics
-    * 
-    
-  2. **Page 2** is intended for school administrators and policy makers who want to see 
-
-The interactive map shows harsh punishments per student, represented as quintiles of the underlying distribution, for each district. In addition to these, district names and several district demographic characteristics are presented by hovering over a district line.
-
-a call to change [reference](https://www.tandfonline.com/doi/pdf/10.1080/00098655.2015.1121120)
-
-**Useful Definitions:** 
-
-* A *quintile* is exactly 20% (or $\frac1{5^{th}}$) of the population; these are formed by arranging a variable in order and dividing the distribution into 5 equal bins. A district in the $1^{st}$ quintile for harsh punishments per student is one of the 20% of districts with the fewest harsh punishments per student.
-
-* *Harsh punishments* are punishments that either remove students from the school or involve physically disciplining students. The disciplinary actions reported that match this definition include:
-
-
-
+  * Physical restraint
   
-* *Free and Reduced-Price Lunch Status* (FRL) is related to family income and is used as a crude approximation of a child coming from a low-income family. 
-
-* *English for Speakers of Other Languages* (ESOL)
+Technically, physical restraint *is not a legal form of punishment* by [Georgia Law](https://safesupportivelearning.ed.gov/sites/default/files/discipline-compendium/Georgia%20School%20Discipline%20Laws%20and%20Regulations.pdf), however it is reported by the [GA Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx) alongside other punishments, suggesting it's used enough to need to be tracked (and making my definition of a "harsh punishment"). Importantly, no results change appreciably when this one aspect is omitted.
   
 **Data**
 
 The data set represents 2,141 schools in 198 districts across the state of Georgia, and merges data from the [Governer's Office of Student Achievement](https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data) and the [Georgia Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx). 
+
+Single imputation was used for all models, as pooling multiple imputed data sets is not interpretable to the target audience (and is not integrated into mixed effects regression trees). Imputation was done with the `{mice}` package with all variables included in the data set. Missingness in state-reported data stems from districts which had numbers too small to report. As previously stated, the data can be seen on Page 2
 
 
 Column {data-width=650, .tabset} 
@@ -481,34 +444,8 @@ plotly_map1
 School Admin
 ===
 
-column {data-width=400, .tabset}
+column {data-width=500, .tabset}
 -----------------------------------------------------------------------
-
-### Profiles of Schools
-
-**How exactly do schools who give many harsh punishments per student compare to those who give few?**
-
-**Figure 2** compares demographic characteristics for schools with the fewest and most harsh punishments per student at the school and district level. Schools which give the most harsh punishments per student have many more free/reduced-price lunch eligible students than those who give the least. These schools also have many more black students and many fewer white students. Similar differences can be seen at the district level. This necessitates both a deeper investigation into the equity in use of these harsh punishments and exploration of possible alternative punishments that allow students to learn from mistakes in a school setting. Teachers and Administration in districts with such demographics should 
-
-**How much does disciplinary action change across percent FRL Eligible and percent black students per school?**
-
-**Table 1** & **Table 2** explore these differences. Comparing schools with the most FRL eligible to the least shows 400x more harsh punishments in the former than the latter; similar comparisons for percent black students show almost 350x more harsh punishments in schools with the highest percent black students compared to those with the lowest percent black students. 
-
-```{r}
-# percent_change_2 %>%
-#   round(digits = 2) %>%
-#   gt() %>%
-#   tab_header(
-#     title = 'Table 1. Inequity in Harsh Punishments per Student (HPS) across % FRL Students') %>%
-#   tab_options(table.width = pct(95))
-# 
-# percent_change_1 %>%
-#   round(digits = 2) %>%
-#   gt() %>%
-#   tab_header(
-#     title = 'Table 2. Inequity in Harsh Punishments per Student (HPS) across % Black Students') %>%
-#   tab_options(table.width = pct(95))
-```
 
 ### School-Level Info
 
@@ -527,9 +464,13 @@ dat_school_level <-
             percent_hispanic = perc_hisp, 
             percent_white = perc_white, 
             percent_migrant = perc_migrant, 
-            percent_ESOL = perc_esol) %>% 
+            percent_ESOL = perc_esol, 
+            out_of_school_suspension_oss,
+            juvenile_court_referral,
+            physical_restraint,
+            corporal_punishment,
+            permanent_expulsion) %>% 
   mutate_if(is.numeric, round)
-  
   
 reactable(dat_school_level, 
     filterable = T,
@@ -545,7 +486,32 @@ reactable(dat_school_level,
 ```
 
 
-column {data-width=600, .tabset}
+### Figure 2 Explanation
+
+**How exactly do schools who give many harsh punishments per student compare to those who give very few?**
+
+**Figure 2** compares demographic characteristics for schools with the fewest (i.e., bottom 10%) and most (i.e., top 10%) harsh punishments per student.
+
+Schools who give the fewest harsh punishments per student have a fairly even spread of % FRL students, often have low % Black students, and have high % White students. Schools who give the most harsh punishments per student almost exclusively have high % FRL students, high % Black students, and often low % White students. 
+
+This necessitates both a deeper investigation into the equity in use of these harsh punishments and exploration of possible alternative punishments that allow students to learn from mistakes in a school setting. Teachers and Administration in districts with such demographics should examine the way that they — and their coworkers — interact with low-income and Black students. 
+
+Simple recommendations include: 
+
+  * Blind review of punishment-worthy incidents and their respective punishments. 
+  * Formation of a larger panel — including student representatives and people of color — to handle disciplinary actions. 
+  * Use of evidence-based strategies for disciplinary action which have been shown to change student behavior, rather than simply removal from school ground.
+  * Focus on rehabilitative action, rather than punitive action.
+  * Incorporation of an equity framework to punishment.
+  * Choosing leadership strategies that can close the racial discipline gap.
+  * Reading important literature on [the problem](https://link.springer.com/content/pdf/10.1023/A:1021320817372.pdf), [appropriate leadership styles](https://www.tandfonline.com/doi/pdf/10.1080/00098655.2015.1121120), etc.
+
+**How much does disciplinary action change across percent FRL Eligible and percent Black students per school?**
+
+Comparing schools in the top 20% of %FRL eligible to those in the bottom 20% shows **400x more harsh punishments** for schools with the highest %FRL compared to the lowest %FRL. Similar comparisons for percent Black students show **almost 350x more harsh punishments** in schools with the top 20% of % Black students compared to those in the bottom 20% of % Black students.
+
+
+column {data-width=500, .tabset}
 -----------------------------------------------------------------------
 
 ### Figure 2.
@@ -557,42 +523,54 @@ school_gif
 Researchers
 ===
 
-Column {data-width=350, .tabset}
+Column {data-width=500, .tabset}
 -----------------------------------------------------------------------
 
 ### Description 
 
+**What test was conducted?**
+
 Parameter instability tests are relatively infrequently used tools in education, probably because their long-standing inability to take into account nested data structures (like those made by schools nested in districts). Recent advancements from [Zeileis, Hothorn, and Hornik's (2008)](https://www.tandfonline.com/doi/abs/10.1198/106186008X319331) general linear model regression trees have extended them to incorporate such nesting, thanks to [Fokkema & Zeileis (2018)](https://pubmed.ncbi.nlm.nih.gov/29071652/). Such models are extremely powerful and flexible. They use recursive partitioning to find subgroup differences in any regression model, as well as determining which variables moderate the relationship specified to varying degrees. 
 
-These models allow you to specify a mixed-effect model and provide partitioning variables. After accounting for level-2 variance, the model runs many linear models and determines which parameters differ along partitioning variables. A variant of an *F* test is then used to determine if differences among partitioning variables are significant at a pre-specified alpha, controlling for inflation with Bonferroni corrections. If these differences are significant, subsequent splits can be identified, which would suggest an interactive effect.
+These models allow you to specify a mixed-effect model and provide partitioning variables. After accounting for level-2 variance, the model runs many linear models and determines which parameters differ along partitioning variables. A variant of an *F* test is then used to determine if differences among partitioning variables are significant at a pre-specified alpha, controlling for inflation with Bonferroni corrections. If these differences are significant, subsequent splits can be identified, which would suggest an interactive effect. When variables appear higher in the tree, they are "more important" to the model, meaning that variable creates more homogeneous subgroups than those below. 
 
-Single imputation was used to fill missing data. The model shown here only reports group differences at the *p* < 0.001, after Bonferroni corrections, and with the minimum acceptable node as as 10% of the total sample (i.e., 230 schools/node).
+**How was missing data handled and how was the model specified?**
 
-An intercept-only model was fit for Harsh Discipline per student at the school level. Conditional variances were specified such that schools were nested in their districts. The model explored for parameter instability across level-1 and level-2 with all school- and district-level covariates (e.g., percent racial/ethnic composition, percent FRL status, percent English second language, and percent migrant students). 
+Single imputation was used to fill missing data. The model shown here only reports group differences at the *p* < 0.001, after Bonferroni corrections, and with the minimum acceptable node as as 10% of the total sample (i.e., 230 schools/node). The model was estimated with restricted maximum likelihood (REML) with the `{glmertree}` package. 
+
+An intercept-only model was fit for harsh discipline per student at the school level. Conditional variances were specified such that schools were nested in their districts. The model explored for parameter instability across level-1 and level-2 with all school- and district-level covariates (e.g., percent racial/ethnic composition, percent FRL status, percent English second language, and percent migrant students). To control for dependencies, variances of school types (elementary, middle, etc.) were specified to be nested within their districts.
 
 ### Results
 
-**Figure 3** shows results of this exploratory model
+**Figure 3** shows results of this exploratory model. The bottom of the model essentially reads as boxplots for the subgroup specified by the tree. Boxplots within one cell are not significantly different from one another, but are significantly different from boxplots of other subgroups. 
 
-The variable which shows the greatest inequity in harsh punishments per student is school type, with middle and high schools displaying higher average harsh punishments per student than elementary and K-12 schools. Among middle and high schools, schools with higher than ~61% FRL eligible student have higher average harsh punishments per student than those with less than ~61%. 
+The variable which shows the greatest inequity in harsh punishments per student is school type, with middle and high schools displaying higher average harsh punishments per student than elementary and K-12 schools. Among middle and high schools, schools with higher than ~75% FRL eligible student have higher average harsh punishments per student than those with less than ~75%. Among schools that are less than ~75% FRL, schools with 32% (or more) Black students have more harsh punishments than those with less than 32%.
 
-Among elementary and middle schools, the variable which creates greatest instability in estimation of the intercept is percent black students, with schools that have more than 35% black students displaying higher average harsh punishments per student. 
+Among elementary and middle schools, the variable which creates greatest instability in estimation of the intercept is percent Black students, with schools that have more than 35% Black students displaying higher average harsh punishments per student. 
 
-An important note here is that the figure actually shows the entire distribution across elementary and middle schools, but many outliers for middle and high schools were omitted from this visualization to make comparison of the average and interquartile ranges easier. 
+An **important note** here is that the figure actually shows the entire distribution across elementary and middle schools, but many outliers for middle and high schools were omitted from this visualization to make comparison of the average and interquartile ranges easier. 
 
-The model predicts *middle and high schools with less than ~61% FRL eligible students* will average **1 harsh punishment for every 9 students**. In *middle and high schools with more than ~61% FRL eligible students*, this number increases to over **1 harsh punishment for every 4 students**. In *elementary and K-12 schools with less than 35% black students*, we see only **1 harsh punishment per every 20 students**. For *elementary and K-12 schools with more than 35% black students*, we see more than **1 harsh punishment per every 10 students**.
+The model predicts:
 
-This provides evidence that there is significant inequity in distribution of harsh punishments per student across schools, family income (i.e., FRL status), and percent black students. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity. 
+**Middle and high schools with more than ~75% FRL eligible students** average **~1 harsh punishment for every 3 students**. 
+
+**Middle and high schools with less than ~75% FRL eligible students and more than 32% Black students** average **~1 harsh punishment for every 5 students**. 
+
+**Middle and high schools with less than ~75% FRL eligible students and less than 32% Black students** average **~1 harsh punishment for every 10 students**. 
+
+**Elementary and K-12 schools with less than 35% Black students** average **1 harsh punishment per every 20 students**. 
+
+**Elementary and K-12 schools with more than 35% Black students**, we see more than **1 harsh punishment per every 10 students**.
+
+This provides evidence that there is significant inequity in distribution of harsh punishments per student across schools, family income (i.e., FRL status), and percent Black students. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity. 
 
 
-Column {data-width=650, .tabset}
+Column {data-width=500, .tabset}
 -----------------------------------------------------------------------
 
 ### Figure 3. 
 
 ```{r}
-# tree_pic <- png::readPNG(here::here('Data', 'tree_plot.png')) 
-# grid::grid.raster(tree_pic)
 tree
 ```
 
