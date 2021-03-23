@@ -6,6 +6,7 @@ output:
     orientation: columns
     vertical_layout: fill
     source_code: https://github.com/Chhr1s/GA_DOE_Public/blob/main/docs/index.Rmd
+    self_contained: false
 ---
 
 ```{r setup}
@@ -81,12 +82,19 @@ disc_action <- import(
 dat <- disc_action %>% 
   left_join(schools) %>% # if this is left_join I have to impute
   group_by(system_name) %>% 
-  mutate(harsh =
-           out_of_school_suspension_oss +
-           juvenile_court_referral +
-           physical_restraint +
-           corporal_punishment +
-           permanent_expulsion,
+  mutate(exclusionary = 
+             out_of_school_suspension_oss +
+             juvenile_court_referral +
+             permanent_expulsion, 
+             assigned_to_alternative_school + 
+             non_permanent_expulsion,
+           
+    # harsh =
+    #        out_of_school_suspension_oss +
+    #        juvenile_court_referral +
+    #        physical_restraint +
+    #        corporal_punishment +
+    #        permanent_expulsion,
          district = factor(system_name),
          school_name = factor(school_name), 
          fac_schtype = factor(fac_schtype), 
@@ -98,20 +106,22 @@ dat <- disc_action %>%
          total,
          out_of_school_suspension_oss,
          juvenile_court_referral,
-         physical_restraint,
-         corporal_punishment,
+         #physical_restraint,
+         #corporal_punishment,
          permanent_expulsion,
+         assigned_to_alternative_school,
+         non_permanent_expulsion,
          contains('frl'),
          contains('black'), 
          contains('hisp'), 
          contains('white'), 
          contains('migrant'), 
          contains('esol'), 
-         contains('harsh')) %>% 
+         contains('exclusionary')) %>% 
   select(-kk_12_percent_frl)
 
 imputed <- dat %>% 
-  select(total:harsh) %>% 
+  select(total:exclusionary) %>% 
   mice::mice(m = 1, seed = 12345, remove.collinear = T, print = F) %>% 
   mice::complete(1)
 
@@ -127,8 +137,8 @@ dat_imp <- import(here('Data', 'Imputed.csv')) %>%
   select(-contains('...'))
 
 dat_final <- dat_imp %>%
-  mutate(harsh_ps = harsh/total, 
-         harsh_per_100 = harsh_ps*100, 
+  mutate(exclusionary_ps = exclusionary/total, 
+         exclusionary_per_100 = exclusionary_ps*100, 
          perc_non_white = 100-perc_white, 
          district = factor(district),
          school_name = factor(school_name)) %>% 
@@ -141,7 +151,7 @@ dat_final <- dat_imp %>%
          d_esol = sum(total*perc_esol, na.rm = T)/district_size,
          d_migrant = sum(total*perc_migrant, na.rm = T)/district_size,
          d_frl = sum(total*perc_frl, na.rm = T)/district_size,
-         d_harsh = sum(harsh, na.rm = T)/district_size) %>%
+         d_exclusionary = sum(exclusionary, na.rm = T)/district_size) %>%
   ungroup()
 
 dat_long <- dat_final %>%
@@ -158,9 +168,9 @@ rm(list=setdiff(ls(), c('dat_final', 'dat_long')))
 ```{r}
 comparison_schools <-
   dat_final %>%
-  mutate(harsh_10 = ntile(harsh_ps, 10)) %>%
-  filter(harsh_10 %in% c(1,10)) %>%
-  mutate(category = if_else(harsh_10 == 1, 'Fewest', 'Most')) %>% 
+  mutate(exclusionary_10 = ntile(exclusionary_ps, 10)) %>%
+  filter(exclusionary_10 %in% c(1,10)) %>%
+  mutate(category = if_else(exclusionary_10 == 1, 'Fewest', 'Most')) %>% 
   select(-district, 
          -contains('non_white'),
          -district_size, 
@@ -204,8 +214,8 @@ comparison_schools %>%
   )) +
   labs(x = 'Percent of School', 
        y = '', 
-       color = 'Harsh Punishments per Student', 
-       shape = 'Harsh Punishments per Student', 
+       color = 'Exclusionary Punishments per Student', 
+       shape = 'Exclusionary Punishments per Student', 
        caption = 'Most = top 10%; Least = bottom 10%') +
   theme_minimal() + 
   scale_color_OkabeIto()
@@ -217,7 +227,7 @@ school_animation <-
   school_plot + 
   transition_states(states = category, transition_length = 2) + 
   labs(title = 'Schools with the {closest_state} 
-Harsh Punishments per Student') + 
+Exclusionary Punishments per Student') + 
   theme(plot.title = element_text(hjust=0.5, size=rel(3)), 
         #plot.caption = element_text(hjust=0.5, size=rel(3)), 
         axis.text.y = element_text(size = rel(2)), 
@@ -229,7 +239,7 @@ Harsh Punishments per Student') +
   exit_fade() 
 
 school_gif <- animate(school_animation, 
-                      nframes = 10, 
+                      nframes = 2, 
                       fps = 1,
                       height = 600, 
                       width = 800 
@@ -245,7 +255,7 @@ lmertree_TA <- dat_final %>%
          `% FRL` = perc_frl) %>% 
   lmertree(
      formula = 
-       harsh_ps ~ 1 | 
+       exclusionary_ps ~ 1 | 
        (1 | district/`School Type`) | 
        total +
        `School Type` + 
@@ -282,7 +292,7 @@ tree <-
   geom_node_label(aes(label = splitvar), 
                   ids = "inner") +
   geom_node_plot(gglist = list(
-    geom_boxplot(aes(y = harsh_ps, 
+    geom_boxplot(aes(y = exclusionary_ps, 
                      color = `School Type`)), 
     labs(y = 'Punishments/Student'),
     theme_minimal(),
@@ -310,7 +320,7 @@ tree <-
     aes(label = paste0("N = ", nodesize)),
     fontface = "bold",
     ids = "terminal") + 
-  labs(title = 'Mixed Effects Regression Tree of Harsh Punishments per Students') +
+  labs(title = 'Mixed Effects Regression Tree of exclusionary Punishments per Students') +
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
@@ -348,13 +358,13 @@ dat_district <-
 GA_districts <- 
   GA_sf %>% 
   left_join(dat_district) %>% 
-  mutate(harsh_qt = factor(ntile(d_harsh, 5)), 
+  mutate(exclusionary_qt = factor(ntile(d_exclusionary, 5)), 
          black_qt = factor(ntile(d_black, 5)))
 ```
 
 ```{r}
 b_map <- GA_districts %>% 
-  mutate(`Harsh Punishments per Student` = round(d_harsh, 2), 
+  mutate(`Exclusionary Punishments per Student` = round(d_exclusionary, 2), 
     Demographics = paste('\n', '(', district, ')',
                          '\n', round(d_black, 1), '% Black', 
                          '\n', round(d_hisp, 1), '% Hispanic', 
@@ -363,12 +373,12 @@ b_map <- GA_districts %>%
                          sep = "")
          ) %>% 
   ggplot(aes(geometry = geometry)) + 
-  geom_sf(aes(fill = `Harsh Punishments per Student`, text = Demographics)) +
+  geom_sf(aes(fill = `Exclusionary Punishments per Student`, text = Demographics)) +
   scale_fill_distiller(palette = "Blues", direction = -1) + 
   theme_void()  +
   theme(legend.position = 'bottom') +
-  labs(fill = 'Harsh Punishments per Student',
-       title = 'Distribution Harsh Punishments per Student') 
+  labs(fill = 'Exclusionary Punishments per Student',
+       title = 'Distribution Exclusionary Punishments per Student') 
 
 plotly_map1 <- 
   ggplotly(b_map) 
@@ -385,22 +395,21 @@ Column {data-width=350, .tabset}
 
 **1. Page 1: intended for anyone.** This page includes:
 
-  * **Figure 1**, an interactive map of Georgia which shows distribution of **harsh punishments per student** & **percents of demographic characteristics** in each school districts (drag an area to zoom in, double click to zoom out, hover the mouse along *district borders* to see information)
+  * **Figure 1**, an interactive map of Georgia which shows distribution of **exclusionary punishments per student** & **percents of demographic characteristics** in each school districts (drag an area to zoom in, double click to zoom out, hover the mouse along *district borders* to see information)
   * **Background information** for the project (See *Introduction* tab behind this one)
   * **Useful definitions** of terms used throughout (See *Introduction* tab behind this one)
 
 **2. Page 2: intended for school admin & education policy makers.** This page includes:
 
-  * **Figure 2**, an animated plot showing the demographic characteristics of schools with **the most harsh punishments per student** versus **schools with the least harsh punishments per student**. 
+  * **Figure 2**, an animated plot showing the demographic characteristics of schools with **the most exclusionary punishments per student** versus **schools with the least exclusionary punishments per student**. 
   * **Explanations of these differences** along with **recommendations for admins and policy makers**
-  * **(Searchable) school-level data for every school in Georgia**
 
 **3. Page 3: intended for researchers and analysts.** This page includes:
 
-  * **Figure 3**, a plot made from a mixed effects regression trees model that explores heterogeneity (a.k.a. subgroup differences) in harsh punishments per student at the school- and district-level. 
+  * **Figure 3**, a plot made from a mixed effects regression trees model that explores heterogeneity (a.k.a. subgroup differences) in exclusionary punishments per student at the school- and district-level. 
   * (An abbreviated) **Methods & Results** section for this model 
 
-**The [Progression-of-EDLD-652-Final Repo](https://chhr1s.github.io/Progression-of-EDLD-652-Final/) contains all of the past iterations of these figures, as required by the final project.**
+**The [Progression-of-EDLD-652-Final Repo](https://chhr1s.github.io/Progression-of-EDLD-652-Final/) contains all of the past iterations of these figures, as required by the final project. Note that past iterations used "harsh" punishments, which is a broader category than exclusionary. This was changed for consistency with the majority of the literature; of note, the findings did not change appreciably.**
 
 ### Introduction
 
@@ -412,19 +421,14 @@ Such inequities manifest as [Black students recieving a disproportionate number 
 
 "Exclusionary disciplinary action" is any action which removes a student from the school (e.g., suspension, expulsion, etc.). Such exclusionary punishments are shown to [contribute directly to the school-to-prison pipeline](https://www.tandfonline.com/doi/full/10.1080/10665684.2014.958965). This is not meant to be a deep-dive into the literature, but this [Google Scholar](https://scholar.google.com/scholar?hl=en&as_sdt=0%2C38&q=inequity+in+student+discipline&btnG=) link can get you started if you're interested. 
 
-Other punishments besides these exclusionary actions can be detrimental to a child's perceived belonging, trust in the school as an institution, and feeling of safety. Georgia — among other states — retains an antiquated form of student discipline, which can have iatrogenic effects: [corporal punishment, most often manifested as "paddling" (i.e., spanking a child with a large wooden paddle)](https://www.theguardian.com/us-news/2018/sep/12/georgia-school-innovation-classics-paddle-students#:~:text=the%20United%20States.-,Georgia%20is%20one%20of%2018%20states%20where%20corporal%20punishment%20remains,of%20corporal%20punishment%20each%20year). 
-
 **Current Project**
 
-This dashboard is an exploratory analysis of inequity in **harsh punishments** among demographic characteristics in Georgia schools, defined as: 
+This dashboard is an exploratory analysis of inequity in **exclusionary punishments** among demographic characteristics in Georgia schools, defined as: 
 
-  * Permanent expulsion
+  * Expulsion (permanent or impermanent)
   * Out of school suspension
   * Juvenile court referral
-  * Corporal punishment 
-  * Physical restraint
-  
-Technically, physical restraint *is not a legal form of punishment* by [Georgia Law](https://safesupportivelearning.ed.gov/sites/default/files/discipline-compendium/Georgia%20School%20Discipline%20Laws%20and%20Regulations.pdf), however it is reported by the [GA Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx) alongside other punishments, suggesting it's used enough to need to be tracked (and making my definition of a "harsh punishment"). Importantly, no results change appreciably when this one aspect is omitted.
+  * Being removed and assigned to an alternative school
   
 **Data**
 
@@ -456,8 +460,8 @@ dat_school_level <-
   dat_final %>% 
   transmute(school_name,
             district = district,
-            harsh_punishments = harsh, 
-            harsh_per_student = harsh_ps,
+            exclusionary, 
+            exclusionary_per_student = exclusionary_ps,
             school_type = factor(fac_schtype, 
                                  levels = c('E', 'M', 'H', 'K12'), 
                                  labels = c('Elementary', 'Middle', 'High', 'K-12')),
@@ -465,21 +469,22 @@ dat_school_level <-
             percent_black = perc_black, 
             percent_hispanic = perc_hisp, 
             percent_white = perc_white, 
-            percent_migrant = perc_migrant, 
-            percent_ESOL = perc_esol, 
-            out_of_school_suspension = out_of_school_suspension_oss,
-            juvenile_court_referral,
-            physical_restraint,
-            corporal_punishment,
-            permanent_expulsion) %>% 
+            #percent_migrant = perc_migrant,
+            #percent_ESOL = perc_esol, 
+            #out_of_school_suspension = out_of_school_suspension_oss,
+            #juvenile_court_referral,
+            #permanent_expulsion, 
+            #non_permanent_expulsion,
+            #alternative_school = assigned_to_alternative_school
+            ) %>% 
   mutate_if(is.numeric, round)
-  
-reactable(dat_school_level, 
+
+reactable(dat_school_level,
     filterable = T,
-    highlight = T, 
-    striped = T, 
+    highlight = T,
+    striped = T,
     outlined = T,
-    defaultSorted = c('harsh_per_student'),
+    defaultSorted = c('exclusionary_per_student'),
     defaultColDef = colDef(
       header = function(x) str_to_title(gsub("_", " ", x))
     ),
@@ -490,13 +495,13 @@ reactable(dat_school_level,
 
 ### Figure 2 Explanation
 
-**How exactly do schools who give many harsh punishments per student compare to those who give very few?**
+**How exactly do schools who give many exclusionary punishments per student compare to those who give very few?**
 
-**Figure 2** compares demographic characteristics for schools with the fewest (i.e., bottom 10%) and most (i.e., top 10%) harsh punishments per student.
+**Figure 2** compares demographic characteristics for schools with the fewest (i.e., bottom 10%) and most (i.e., top 10%) exclusionary punishments per student.
 
-Schools who give the fewest harsh punishments per student have a fairly even spread of % FRL students, often have low % Black students, and have high % White students. Schools who give the most harsh punishments per student almost exclusively have high % FRL students, high % Black students, and often low % White students. 
+Schools who give the fewest exclusionary punishments per student have a fairly even spread of % FRL students, often have low % Black students, and have high % White students. Schools who give the most exclusionary punishments per student almost exclusively have high % FRL students, high % Black students, and often low % White students. 
 
-This necessitates both a deeper investigation into the equity in use of these harsh punishments and exploration of possible alternative punishments that allow students to learn from mistakes in a school setting. Teachers and Administration in districts with such demographics should examine the way that they — and their coworkers — interact with low-income and Black students. 
+This necessitates both a deeper investigation into the equity in use of these exclusionary punishments and exploration of possible alternative punishments that allow students to learn from mistakes in a school setting. Teachers and Administration in districts with such demographics should examine the way that they — and their coworkers — interact with low-income and Black students. 
 
 Simple recommendations include: 
 
@@ -507,10 +512,6 @@ Simple recommendations include:
   * Incorporation of an equity framework to punishment.
   * Choosing leadership strategies that can close the racial discipline gap.
   * Reading important literature on [the problem](https://link.springer.com/content/pdf/10.1023/A:1021320817372.pdf), [appropriate leadership styles](https://www.tandfonline.com/doi/pdf/10.1080/00098655.2015.1121120), etc.
-
-**How much does disciplinary action change across percent FRL Eligible and percent Black students per school?**
-
-Comparing schools in the top 20% of %FRL eligible to those in the bottom 20% shows **400x more harsh punishments** for schools with the highest %FRL compared to the lowest %FRL. Similar comparisons for percent Black students show **almost 350x more harsh punishments** in schools with the top 20% of % Black students compared to those in the bottom 20% of % Black students.
 
 
 column {data-width=500, .tabset}
@@ -540,31 +541,29 @@ These models allow you to specify a mixed-effect model and provide partitioning 
 
 Single imputation was used to fill missing data. The model shown here only reports group differences at the *p* < 0.001, after Bonferroni corrections, and with the minimum acceptable node as as 10% of the total sample (i.e., 230 schools/node). The model was estimated with restricted maximum likelihood (REML) with the `{glmertree}` package. 
 
-An intercept-only model was fit for harsh discipline per student at the school level. Conditional variances were specified such that schools were nested in their districts. The model explored for parameter instability across level-1 and level-2 with all school- and district-level covariates (e.g., percent racial/ethnic composition, percent FRL status, percent English second language, and percent migrant students). To control for dependencies, variances of school types (elementary, middle, etc.) were specified to be nested within their districts.
+An intercept-only model was fit for exclusionary discipline per student at the school level. Conditional variances were specified such that schools were nested in their districts. The model explored for parameter instability across level-1 and level-2 with all school- and district-level covariates (e.g., percent racial/ethnic composition, percent FRL status, percent English second language, and percent migrant students). To control for dependencies, variances of school types (elementary, middle, etc.) were specified to be nested within their districts.
 
 ### Results
 
 **Figure 3** shows results of this exploratory model. The bottom of the model essentially reads as boxplots for the subgroup specified by the tree. Boxplots within one cell are not significantly different from one another, but are significantly different from boxplots of other subgroups. 
 
-The variable which shows the greatest inequity in harsh punishments per student is school type, with middle and high schools displaying higher average harsh punishments per student than elementary and K-12 schools. Among middle and high schools, schools with higher than ~75% FRL eligible student have higher average harsh punishments per student than those with less than ~75%. Among schools that are less than ~75% FRL, schools with 32% (or more) Black students have more harsh punishments than those with less than 32%.
+The variable which shows the greatest inequity in exclusionary punishments per student is school type, with middle and high schools displaying higher average exclusionary punishments per student than elementary and K-12 schools. 
 
-Among elementary and middle schools, the variable which creates greatest instability in estimation of the intercept is percent Black students, with schools that have more than 35% Black students displaying higher average harsh punishments per student. 
+Among these groupings of school types, the variable which creates greatest instability in estimation of the intercept is percent Black students. In both cases, schools with higher percent black students had many more exclusionary punishments than schools with lower percent black students.
 
 An **important note** here is that the figure actually shows the entire distribution across elementary and middle schools, but many outliers for middle and high schools were omitted from this visualization to make comparison of the average and interquartile ranges easier. 
 
 The model predicts:
 
-**Middle and high schools with more than ~75% FRL eligible students** average **~1 harsh punishment for every 3 students**. 
+**Middle and high schools with more than ~34% Black students** average just under **1 exclusionary punishment for every 3 students**. 
 
-**Middle and high schools with less than ~75% FRL eligible students and more than 32% Black students** average **~1 harsh punishment for every 5 students**. 
+**Middle and high schools with less than ~34% Black students** average just over **1 exclusionary punishment for every 10 students**. 
 
-**Middle and high schools with less than ~75% FRL eligible students and less than 32% Black students** average **~1 harsh punishment for every 10 students**. 
+**Elementary and K-12 schools with less than 43% Black students** average just over **4 exclusionary punishment per every 100 students**. 
 
-**Elementary and K-12 schools with less than 35% Black students** average **1 harsh punishment per every 20 students**. 
+**Elementary and K-12 schools with more than 43% Black students**, average more than **1 exclusionary punishment per every 10 students (or 1 in every 100)**.
 
-**Elementary and K-12 schools with more than 35% Black students**, we see more than **1 harsh punishment per every 10 students**.
-
-This provides evidence that there is significant inequity in distribution of harsh punishments per student across schools, family income (i.e., FRL status), and percent Black students. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity. 
+This provides evidence that there is significant inequity in distribution of exclusionary punishments per student across schools type (e.g., middle and high school vs. elementary schools and K-12) and percent Black students. While we can chalk up differences in school type to many factors that are reasonable (e.g., appropriate discipline styles at different ages, types of offenses at different ages, etc.), we **cannot** say the differences in average exclusionary discipline by percent racial characteristics is reasonable. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity and to conduct student-level analyses on disciplinary data. 
 
 
 Column {data-width=500, .tabset}
