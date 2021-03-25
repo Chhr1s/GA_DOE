@@ -272,7 +272,7 @@ lmertree_TA <- dat_final %>%
      alpha = 0.001, 
      bonferroni = T, 
      cluster = district,
-     minsize = 230)
+     minsize = 200)
 
 ```
 
@@ -578,7 +578,7 @@ These models allow you to specify a mixed-effect model and provide partitioning 
 
 **How was missing data handled and how was the model specified?**
 
-Single imputation was used to fill missing data. The model shown here only reports group differences at the *p* < 0.001, after Bonferroni corrections, and with the minimum acceptable node as as 10% of the total sample (i.e., 230 schools/node). The model was estimated with restricted maximum likelihood (REML) with the `{glmertree}` package. 
+Single imputation was used to fill missing data. The model shown here only reports group differences at the *p* < 0.001, after Bonferroni corrections, and with the minimum acceptable node as as 200 schools/node (i.e., just under 10% of sample). The model was estimated with restricted maximum likelihood (REML) with the `{glmertree}` package. 
 
 An intercept-only model was fit for exclusionary discipline per student at the school level. Conditional variances were specified such that schools were nested in their districts. The model explored for parameter instability across level-1 and level-2 with all school- and district-level covariates (e.g., percent racial/ethnic composition, percent FRL status, percent English second language, and percent migrant students). To control for dependencies, variances of school types (elementary, middle, etc.) were specified to be nested within their districts.
 
@@ -596,16 +596,13 @@ The model predicts:
 
 **Middle and high schools with less than ~34% Black students** average just over **1 exclusionary punishment for every 9 students**. 
 
-Among **Middle and high schools with more than ~34% Black students:** 
-
-* schools with **less than 74.75% FRL eligible students** averaged just over **1 exclusionary punishment for every 4 students**. 
-* schools with **more than 74.75% FRL eligible students** averaged over **1 exclusionary punishment for every 3 students**. 
+**Middle and high schools with more than ~34% Black students** averaged just under **1 exclusionary punishment for every 3 students**. 
 
 **Elementary and K-12 schools with less than 43% Black students** average just over **4 exclusionary punishment per every 100 students**. 
 
 **Elementary and K-12 schools with more than 43% Black students**, average more than **1 exclusionary punishment per every 10 students (or 1 in every 100)**.
 
-This provides evidence that there is significant inequity in distribution of exclusionary punishments per student across schools type (e.g., middle and high school vs. elementary schools and K-12), percent Black students, and percent FRL eligible students. While we can chalk up differences in school type to many factors that are reasonable (e.g., appropriate discipline styles at different ages, types of offenses at different ages, etc.), we **cannot** say the differences in average exclusionary discipline by percent racial or socioeconomic characteristics is reasonable. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity and to conduct student-level analyses on disciplinary data. 
+This provides evidence that there is significant inequity in distribution of exclusionary punishments per student across schools type (e.g., middle and high school vs. elementary schools and K-12) and percent Black students. While we can chalk up differences in school type to many factors that are reasonable (e.g., inappropriate discipline styles at early ages, types of offenses at different ages, etc.), we **cannot** say the differences in average exclusionary discipline by racial characteristics is reasonable. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity and to conduct student-level analyses on disciplinary data. 
 
 
 Column {data-width=500, .tabset}
