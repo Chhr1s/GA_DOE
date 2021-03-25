@@ -85,7 +85,7 @@ dat <- disc_action %>%
   mutate(exclusionary = 
              out_of_school_suspension_oss +
              juvenile_court_referral +
-             permanent_expulsion, 
+             permanent_expulsion +
              assigned_to_alternative_school + 
              non_permanent_expulsion,
            
@@ -588,21 +588,24 @@ An intercept-only model was fit for exclusionary discipline per student at the s
 
 The variable which shows the greatest inequity in exclusionary punishments per student is school type, with middle and high schools displaying higher average exclusionary punishments per student than elementary and K-12 schools. 
 
-Among these groupings of school types, the variable which creates greatest instability in estimation of the intercept is percent Black students. In both cases, schools with higher percent black students had many more exclusionary punishments than schools with lower percent black students.
+Among these groupings of school types, the variable which creates greatest instability in estimation of the intercept is percent Black students. In both cases, schools with higher percent black students had many more exclusionary punishments than schools with lower percent Black students. Finally, within middle and high schools with more than 34% black students, the percent of FRL eligible students let to further inequity in exclusionary punishments (with schools with more than ~75% FRL eligible students having more exclusionary punishments than those with less)
 
 An **important note** here is that the figure actually shows the entire distribution across elementary and middle schools, but many outliers for middle and high schools were omitted from this visualization to make comparison of the average and interquartile ranges easier. 
 
 The model predicts:
 
-**Middle and high schools with more than ~34% Black students** average just under **1 exclusionary punishment for every 3 students**. 
+**Middle and high schools with less than ~34% Black students** average just over **1 exclusionary punishment for every 9 students**. 
 
-**Middle and high schools with less than ~34% Black students** average just over **1 exclusionary punishment for every 10 students**. 
+Among **Middle and high schools with more than ~34% Black students:** 
+
+* schools with **less than 74.75% FRL eligible students** averaged just over **1 exclusionary punishment for every 4 students**. 
+* schools with **more than 74.75% FRL eligible students** averaged over **1 exclusionary punishment for every 3 students**. 
 
 **Elementary and K-12 schools with less than 43% Black students** average just over **4 exclusionary punishment per every 100 students**. 
 
 **Elementary and K-12 schools with more than 43% Black students**, average more than **1 exclusionary punishment per every 10 students (or 1 in every 100)**.
 
-This provides evidence that there is significant inequity in distribution of exclusionary punishments per student across schools type (e.g., middle and high school vs. elementary schools and K-12) and percent Black students. While we can chalk up differences in school type to many factors that are reasonable (e.g., appropriate discipline styles at different ages, types of offenses at different ages, etc.), we **cannot** say the differences in average exclusionary discipline by percent racial characteristics is reasonable. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity and to conduct student-level analyses on disciplinary data. 
+This provides evidence that there is significant inequity in distribution of exclusionary punishments per student across schools type (e.g., middle and high school vs. elementary schools and K-12), percent Black students, and percent FRL eligible students. While we can chalk up differences in school type to many factors that are reasonable (e.g., appropriate discipline styles at different ages, types of offenses at different ages, etc.), we **cannot** say the differences in average exclusionary discipline by percent racial or socioeconomic characteristics is reasonable. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity and to conduct student-level analyses on disciplinary data. 
 
 
 Column {data-width=500, .tabset}
