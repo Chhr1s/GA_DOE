@@ -401,6 +401,7 @@ Column {data-width=350, .tabset}
 
 **2. Page 2: intended for school admin & education policy makers.** This page includes:
 
+  * **Searchable table of all data used** which includes these values for every school
   * **Figure 2**, an animated plot showing the demographic characteristics of schools with **the most exclusionary punishments per student** versus **schools with the least exclusionary punishments per student**. 
   * **Explanations of these differences** along with **recommendations for admins and policy makers**
 
@@ -436,6 +437,45 @@ The data set represents 2,141 schools in 198 districts across the state of Georg
 
 Single imputation was used for all models, as pooling multiple imputed data sets is not interpretable to the target audience (and is not integrated into mixed effects regression trees). Imputation was done with the `{mice}` package with all variables included in the data set. Missingness in state-reported data stems from districts which had numbers too small to report. As previously stated, the data can be seen on Page 2
 
+### Neural Network
+
+I trained a [neural network](https://chhr1s.shinyapps.io/Neural_Net_Predictions/) with 3 years of data to predict the number of exclusionary punishments at a school. The model allows you to input your own values for all parameters with sliders and drop down menus (except year which is fixed to 2015). 
+
+**By changing only a few variables at a time, you can see the relative impact of a given variable or the interactive effect of a few**
+
+The model was tuned with k-fold cross validation where k = 4, and final evaluation was done with the next year's data. The model defaults to the average of each value for each parameter, and chooses the first school on the list. 
+
+Note that this allows you to make some impossible projections (e.g., 100% Black students & 100% White students & 100% Hispanic students; selecting a school and a different district which doesn't house that school; selecting high school by name and seeing what would happen if it were an elementary school, etc.). For that reason, good logic should be used in its interpretation. Eventually, I'll improve the user interface and allow the year to be changed. I might even prevent impossible combinations, but not yet. Code for the final neural net was: 
+
+```{r eval = F, echo = T}
+model <- keras_model_sequential() %>%
+    layer_dense(units = 64, activation = "relu",
+                input_shape = 18, 
+                kernel_regularizer = regularizer_l1_l2(l1 = 0.001, l2 = 0.001)) %>%
+    layer_dropout(rate = 0.25) %>%  
+    layer_dense(units = 64, activation = "relu", 
+                kernel_regularizer = regularizer_l1_l2(l1 = 0.001, l2 = 0.001)) %>%
+    layer_dropout(rate = 0.25) %>%  
+    layer_dense(units = 64, activation = "relu", 
+                kernel_regularizer = regularizer_l1_l2(l1 = 0.001, l2 = 0.001)) %>%
+    layer_dropout(rate = 0.25) %>%  
+    layer_dense(units = 1)
+
+model %>% compile(
+    optimizer = "rmsprop",
+    loss = "mse",
+    metrics = c("mae")
+  ) 
+
+history <- model %>% 
+  fit(train_scale, 
+      train_targets,
+      epochs = 25, 
+      batch_size = 1, 
+      verbose = 1)
+```
+
+
 
 Column {data-width=650, .tabset} 
 -----------------------------------------------------------------------
@@ -469,13 +509,13 @@ dat_school_level <-
             percent_black = perc_black, 
             percent_hispanic = perc_hisp, 
             percent_white = perc_white, 
-            #percent_migrant = perc_migrant,
-            #percent_ESOL = perc_esol, 
-            #out_of_school_suspension = out_of_school_suspension_oss,
-            #juvenile_court_referral,
-            #permanent_expulsion, 
-            #non_permanent_expulsion,
-            #alternative_school = assigned_to_alternative_school
+            percent_migrant = perc_migrant,
+            percent_ESOL = perc_esol,
+            out_of_school_suspension = out_of_school_suspension_oss,
+            juvenile_court_referral,
+            permanent_expulsion,
+            non_permanent_expulsion,
+            alternative_school = assigned_to_alternative_school
             ) %>% 
   mutate_if(is.numeric, round)
 
@@ -512,7 +552,6 @@ Simple recommendations include:
   * Incorporation of an equity framework to punishment.
   * Choosing leadership strategies that can close the racial discipline gap.
   * Reading important literature on [the problem](https://link.springer.com/content/pdf/10.1023/A:1021320817372.pdf), [appropriate leadership styles](https://www.tandfonline.com/doi/pdf/10.1080/00098655.2015.1121120), etc.
-
 
 column {data-width=500, .tabset}
 -----------------------------------------------------------------------
