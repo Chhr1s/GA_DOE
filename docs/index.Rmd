@@ -76,7 +76,7 @@ dat <-
     dat_2017,
     dat_2018
     ) %>% 
-  tibble() #%>% 
+  tibble()
   #mutate(school_type = na_if(school_type, ""))
 
 # remove all data sets besides main
