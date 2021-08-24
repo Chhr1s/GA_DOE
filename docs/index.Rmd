@@ -1,5 +1,5 @@
 ---
-title: "EDLD 652 Final"
+title: "Exclusionary Punishments in GA"
 output: 
   flexdashboard::flex_dashboard:
     css: css_script.css
@@ -8,6 +8,7 @@ output:
     source_code: https://github.com/Chhr1s/GA_DOE_Public/blob/main/docs/index.Rmd
     self_contained: false
 ---
+
 
 ```{r setup}
 library(flexdashboard)
@@ -30,113 +31,61 @@ options(tigris_use_cache = TRUE)
 options(tigris_class = "sf")
 ```
 
-```{r eval=FALSE, include=FALSE}
-frl <- import(here("Data", "Free Reduced Lunch (FRL) Fiscal Year2019 Data Report_Schools.csv")) %>% 
-  clean_names() %>% 
-  mutate(kk_12_percent_frl = as.numeric(kk_12_percent_frl) 
-         #kk_12_percent_frl = replace_na(kk_12_percent_frl, 0)
-         ) %>% 
-  separate(col = school_id_school_name, 
-           into = c('school_id','school_name'), 
-           sep = " - ",
-           extra = "merge") %>% 
-  filter(system_name != 'N/A') %>% 
-  select(-system_id)
-
-all_students <-  #https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data
-  import(
-    here('Data',
-         'Enrollment_By_Grade_Level_2019_Dec2nd_2019.csv')) %>%
-  clean_names() %>% 
-  filter(enrollment_period == 'Fall') %>% 
-  group_by(instn_name) %>% 
-  summarize(num_students = sum(enrollment_count)) %>% 
-  transmute(school_name = instn_name, 
-            total = num_students)
-
-
-school_demos <- import(
-    here('Data', #https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data
-  'Enrollment_by_Subgroups_Programs_2019_OCT_22_2020.csv')) %>% 
-  clean_names() %>% 
-  transmute(school_name = instn_name,
-            system_name = school_dstrct_nm,
-            perc_black = enroll_percent_black,
-            perc_hisp = enroll_percent_hispanic, 
-            perc_white = enroll_percent_white, 
-            perc_migrant = enroll_percent_migrant, 
-            perc_esol = enroll_pct_esol
-            )
+```{r eval=TRUE, include=TRUE}
+dat_2015 <- 
+  rio::import(
+    here::here(
+      'Data', 
+      'year_2015_imputed.csv')
+    ) %>% 
+  select(-exclusionary_ps) %>% 
+  mutate_if(is.character, as.factor)
   
-schools <- school_demos %>%
-  full_join(all_students)
+dat_2016 <- 
+  rio::import(
+    here::here(
+      'Data', 
+      'year_2016_imputed.csv')
+    ) %>% 
+  select(-exclusionary_ps) %>% 
+  mutate_if(is.character, as.factor)
 
-disc_action <- import(
-  here("Data", 
-       "sr2019_discipline_action_counts_sch.xlsx")
-  ) %>% 
-  clean_names() %>% 
-  select(-grade_range, -school_year) %>% 
-  left_join(frl)
+dat_2017 <- 
+  rio::import(
+    here::here(
+      'Data',
+      'year_2017_imputed.csv')
+    ) %>% 
+  select(-exclusionary_ps) %>% 
+  mutate_if(is.character, as.factor)
+  
+## we're going to reserve this for testing
+dat_2018 <- 
+  rio::import(
+    here::here(
+      'Data',
+      'year_2018_imputed.csv')
+    ) %>% 
+  select(-exclusionary_ps) %>%
+  mutate_if(is.character, as.factor)
 
-dat <- disc_action %>% 
-  left_join(schools) %>% # if this is left_join I have to impute
-  group_by(system_name) %>% 
-  mutate(exclusionary = 
-             out_of_school_suspension_oss +
-             juvenile_court_referral +
-             permanent_expulsion +
-             assigned_to_alternative_school + 
-             non_permanent_expulsion,
-           
-    # harsh =
-    #        out_of_school_suspension_oss +
-    #        juvenile_court_referral +
-    #        physical_restraint +
-    #        corporal_punishment +
-    #        permanent_expulsion,
-         district = factor(system_name),
-         school_name = factor(school_name), 
-         fac_schtype = factor(fac_schtype), 
-         perc_frl = kk_12_percent_frl 
-         ) %>% 
-  select(district, 
-         school_name, 
-         fac_schtype, 
-         total,
-         out_of_school_suspension_oss,
-         juvenile_court_referral,
-         #physical_restraint,
-         #corporal_punishment,
-         permanent_expulsion,
-         assigned_to_alternative_school,
-         non_permanent_expulsion,
-         contains('frl'),
-         contains('black'), 
-         contains('hisp'), 
-         contains('white'), 
-         contains('migrant'), 
-         contains('esol'), 
-         contains('exclusionary')) %>% 
-  select(-kk_12_percent_frl)
+dat <- 
+  bind_rows(
+    dat_2015, 
+    dat_2016, 
+    dat_2017,
+    dat_2018
+    ) %>% 
+  tibble() #%>% 
+  #mutate(school_type = na_if(school_type, ""))
 
-imputed <- dat %>% 
-  select(total:exclusionary) %>% 
-  mice::mice(m = 1, seed = 12345, remove.collinear = T, print = F) %>% 
-  mice::complete(1)
-
-dat_imp <- dat %>%
-  select(district, school_name, fac_schtype) %>%
-  bind_cols(imputed)
-
-dat_imp %>% rio::export(here('Data', 'Imputed.csv'))
+# remove all data sets besides main
+rm(list = setdiff(ls(), "dat")) 
 ```
 
-```{r}
-dat_imp <- import(here('Data', 'Imputed.csv')) %>% 
-  select(-contains('...'))
 
-dat_final <- dat_imp %>%
+```{r}
+dat_final <- dat %>%
   mutate(exclusionary_ps = exclusionary/total, 
          exclusionary_per_100 = exclusionary_ps*100, 
          perc_non_white = 100-perc_white, 
@@ -159,8 +108,6 @@ dat_long <- dat_final %>%
                names_to = 'school_demos',
                names_prefix = 'perc_',
                values_to = 'percents')
-
-
 
 rm(list=setdiff(ls(), c('dat_final', 'dat_long')))
 ```
@@ -226,8 +173,8 @@ comparison_schools %>%
 school_animation <- 
   school_plot + 
   transition_states(states = category, transition_length = 2) + 
-  labs(title = 'Schools with the {closest_state} 
-Exclusionary Punishments per Student') + 
+  labs(title = 'Characteristics of Schools with\nFewest vs. Most
+Exclusionary\nPunishments per Student') + 
   theme(plot.title = element_text(hjust=0.5, size=rel(3)), 
         #plot.caption = element_text(hjust=0.5, size=rel(3)), 
         axis.text.y = element_text(size = rel(2)), 
@@ -248,16 +195,21 @@ school_gif <- animate(school_animation,
 
 ```{r}
 lmertree_TA <- dat_final %>% 
-  mutate(`% Black` = perc_black, 
-         `School Type` = factor(fac_schtype, 
-                                 levels =c('E', 'M', 'H', 'K12'), 
-                                 labels =c('E', 'M', 'H', 'K12')),
-         `% FRL` = perc_frl) %>% 
+  filter(fac_schtype != '') %>% 
+  mutate(
+    `% Black` = perc_black, 
+    `School Type` = factor(
+      fac_schtype, 
+      levels = c('E', 'M', 'H', 'K12'), 
+      labels = c('E', 'M', 'H', 'K12')),
+    `School Size` = total,
+    `% FRL` = perc_frl) %>% 
   lmertree(
      formula = 
        exclusionary_ps ~ 1 | 
+       #(1 | district) + 
        (1 | district/`School Type`) | 
-       total +
+       `School Size` +
        `School Type` + 
        `% Black` + 
        perc_hisp + 
@@ -270,6 +222,7 @@ lmertree_TA <- dat_final %>%
        d_esol + 
        d_frl, 
      alpha = 0.001, 
+     maxdepth = 3,
      bonferroni = T, 
      cluster = district,
      minsize = 200)
@@ -282,7 +235,9 @@ asterisk_sign <- function(p_value) {
   if (p_value < 0.01) return(c("p_value < 0.01"))
   if (p_value < 0.05) return(c("p_value < 0.05"))
   else return("")}
+```
 
+```{r}
 p1 <- lmertree_TA$tree[1]
 
 tree <-
@@ -292,9 +247,13 @@ tree <-
   geom_node_label(aes(label = splitvar), 
                   ids = "inner") +
   geom_node_plot(gglist = list(
-    geom_boxplot(aes(y = exclusionary_ps, 
-                     color = `School Type`)), 
+    geom_boxplot(aes(y = exclusionary_ps),
+                 fill = 'cornflowerblue',
+                 show.legend = FALSE, 
+                 alpha = 0.7, 
+                 color = 'black'), 
     labs(y = 'Punishments/Student'),
+    #colorblindr::scale_fill_OkabeIto(name = 'School Type'), 
     theme_minimal(),
     theme(axis.text.x = element_blank(), 
           axis.ticks.x = element_blank(), 
@@ -433,7 +392,7 @@ This dashboard is an exploratory analysis of inequity in **exclusionary punishme
   
 **Data**
 
-The data set represents 2,141 schools in 198 districts across the state of Georgia, and merges data from the [Governer's Office of Student Achievement](https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data) and the [Georgia Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx). 
+The data set represents over 2,000 schools in nearly 200 districts across the state of Georgia, and merges data from the [Governer's Office of Student Achievement](https://gosa.georgia.gov/report-card-dashboards-data/downloadable-data) and the [Georgia Department of Education](https://www.gadoe.org/data-reporting/Pages/default.aspx) over 4 academic years, beginning in 2015.
 
 Single imputation was used for all models, as pooling multiple imputed data sets is not interpretable to the target audience (and is not integrated into mixed effects regression trees). Imputation was done with the `{mice}` package with all variables included in the data set. Missingness in state-reported data stems from districts which had numbers too small to report. As previously stated, the data can be seen on Page 2
 
@@ -498,6 +457,7 @@ column {data-width=500, .tabset}
 ```{r}
 dat_school_level <-
   dat_final %>% 
+  filter(fac_schtype != '') %>% 
   transmute(school_name,
             district = district,
             exclusionary, 
@@ -510,12 +470,12 @@ dat_school_level <-
             percent_hispanic = perc_hisp, 
             percent_white = perc_white, 
             percent_migrant = perc_migrant,
-            percent_ESOL = perc_esol,
-            out_of_school_suspension = out_of_school_suspension_oss,
-            juvenile_court_referral,
-            permanent_expulsion,
-            non_permanent_expulsion,
-            alternative_school = assigned_to_alternative_school
+            percent_ESOL = perc_esol#,
+            # out_of_school_suspension = out_of_school_suspension_oss,
+            # juvenile_court_referral,
+            # permanent_expulsion,
+            # non_permanent_expulsion,
+            # alternative_school = assigned_to_alternative_school
             ) %>% 
   mutate_if(is.numeric, round)
 
@@ -565,7 +525,7 @@ school_gif
 Researchers
 ===
 
-Column {data-width=500, .tabset}
+Column {data-width=400, .tabset}
 -----------------------------------------------------------------------
 
 ### Description 
@@ -578,39 +538,67 @@ These models allow you to specify a mixed-effect model and provide partitioning 
 
 **How was missing data handled and how was the model specified?**
 
-Single imputation was used to fill missing data. The model shown here only reports group differences at the *p* < 0.001, after Bonferroni corrections, and with the minimum acceptable node as as 200 schools/node (i.e., just under 10% of sample). The model was estimated with restricted maximum likelihood (REML) with the `{glmertree}` package. 
+Single imputation was used to fill missing data. The model shown here only reports group differences at the *p* < 0.001, after Bonferroni corrections, a max depth of 3, and with the minimum acceptable node as as 200 schools/node (i.e., just under 10% of sample). The model was estimated with restricted maximum likelihood (REML) with the `{glmertree}` package. 
 
-An intercept-only model was fit for exclusionary discipline per student at the school level. Conditional variances were specified such that schools were nested in their districts. The model explored for parameter instability across level-1 and level-2 with all school- and district-level covariates (e.g., percent racial/ethnic composition, percent FRL status, percent English second language, and percent migrant students). To control for dependencies, variances of school types (elementary, middle, etc.) were specified to be nested within their districts.
+An intercept-only model was fit for exclusionary discipline per student at the school level. Random intercepts were fit with school types nested within districts. The model explored for parameter instability across level-1 and level-2 with all school- and district-level covariates (e.g., percent racial/ethnic composition, percent FRL status, percent English second language, and percent migrant students). To control for dependencies, variances of school types (elementary, middle, etc.) were specified to be nested within their districts.
+
+### Printed Tree
+
+```{r}
+lmertree_TA$tree
+```
 
 ### Results
 
-**Figure 3** shows results of this exploratory model. The bottom of the model essentially reads as boxplots for the subgroup specified by the tree. Boxplots within one cell are not significantly different from one another, but are significantly different from boxplots of other subgroups. 
+**Figure 3** shows results of this exploratory model. The tree reads as a decision tree, establishing which schools are in the leave nodes. The leaf nodes essentially read as boxplots for the subgroup specified by the tree. 
 
-The variable which shows the greatest inequity in exclusionary punishments per student is school type, with middle and high schools displaying higher average exclusionary punishments per student than elementary and K-12 schools. 
+The variable which shows the greatest inequity in exclusionary punishments per student is school type, with middle and high schools displaying higher average exclusionary punishments per student than elementary and K-12 schools.
 
-Among these groupings of school types, the variable which creates greatest instability in estimation of the intercept is percent Black students. In both cases, schools with higher percent black students had many more exclusionary punishments than schools with lower percent Black students. Finally, within middle and high schools with more than 34% black students, the percent of FRL eligible students let to further inequity in exclusionary punishments (with schools with more than ~75% FRL eligible students having more exclusionary punishments than those with less)
+Among these groupings of school types, the variable which creates greatest instability in estimation of the intercept is percent Black students. In both cases, schools with higher percent black students had many more exclusionary punishments than schools with lower percent Black students. Finally, within middle and high schools with more than 52% Black students, the percent of FRL eligible students let to further inequity in exclusionary punishments (with schools with more than ~75% FRL eligible students having more exclusionary punishments than those with less)
 
-An **important note** here is that the figure actually shows the entire distribution across elementary and middle schools, but many outliers for middle and high schools were omitted from this visualization to make comparison of the average and interquartile ranges easier. 
+An important note here is that the figure actually shows the entire distribution across elementary and middle schools, but many outliers for middle and high schools were omitted from this visualization to make comparison of the average and interquartile ranges easier.
 
 The model predicts:
 
-**Middle and high schools with less than ~34% Black students** average just over **1 exclusionary punishment for every 9 students**. 
+Middle and high schools with **less than 52% Black students** average just over **1 exclusionary punishment for every 5 students**.
 
-**Middle and high schools with more than ~34% Black students** averaged just under **1 exclusionary punishment for every 3 students**. 
+Middle and high schools with **more than 52% Black students** averaged just under **1 exclusionary punishment for every 2 students**.
 
-**Elementary and K-12 schools with less than 43% Black students** average just over **4 exclusionary punishment per every 100 students**. 
+Elementary and K-12 schools with less than 54% Black students average just over **1 exclusionary punishment per every 10 students**.
 
-**Elementary and K-12 schools with more than 43% Black students**, average more than **1 exclusionary punishment per every 10 students (or 1 in every 100)**.
+Elementary and K-12 schools with more than 54% Black students, average more than **1 exclusionary punishment per every 5 students**.
 
-This provides evidence that there is significant inequity in distribution of exclusionary punishments per student across schools type (e.g., middle and high school vs. elementary schools and K-12) and percent Black students. While we can chalk up differences in school type to many factors that are reasonable (e.g., inappropriate discipline styles at early ages, types of offenses at different ages, etc.), we **cannot** say the differences in average exclusionary discipline by racial characteristics is reasonable. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity and to conduct student-level analyses on disciplinary data. 
+This provides evidence that there is significant inequity in distribution of exclusionary punishments per student across schools type (e.g., middle and high school vs. elementary schools and K-12) and percent Black students. While we can chalk up differences in school type to many factors that are reasonable (e.g., inappropriate discipline styles at early ages, types of offenses at different ages, etc.), we cannot say the differences in average exclusionary discipline by racial characteristics is reasonable. Next steps should explore interventions which can improve administrative decision-making to minimize such inequity and to conduct student-level analyses on disciplinary data.
 
-
-Column {data-width=500, .tabset}
+Column {data-width=600, .tabset}
 -----------------------------------------------------------------------
 
 ### Figure 3. 
 
-```{r}
+```{r fig.width = 10, fig.height = 7}
 tree
 ```
 
+### Leaf Node 3
+
+```{r}
+summary(lmertree_TA$tree[3])
+```
+
+### Leaf Node 4
+
+```{r}
+summary(lmertree_TA$tree[4])
+```
+
+### Leaf Node 6
+
+```{r}
+summary(lmertree_TA$tree[6])
+```
+
+### Leaf Node 7
+
+```{r}
+summary(lmertree_TA$tree[7])
+```
